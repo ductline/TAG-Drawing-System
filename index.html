@@ -946,7 +946,13 @@
 // Set your team password here (or replace with server-side auth)
 const TEAM_PASSWORD = 'ductline2024';
 // Anthropic API key — replace with your key or set via environment
-const API_KEY = '';  // ← Set your Anthropic API key here
+const API_KEY = '';  // ← Set your Anthropic API key here (only needed for local proxy mode)
+
+// PROXY_URL options:
+//   Local dev with proxy.js running:  'http://localhost:3000/api/messages'
+//   Deployed on Render/Railway/etc:   'https://your-proxy.onrender.com/api/messages'
+//   Direct (CORS will block browser): 'https://api.anthropic.com/v1/messages'
+const PROXY_URL = 'http://localhost:3000/api/messages';
 
 // ─── AUTH ─────────────────────────────────────────────────
 const SESSION_KEY = 'dl_auth';
@@ -1134,21 +1140,25 @@ Respond with ONLY a valid JSON object, no markdown, no preamble:
   setProgress(45);
 
   try {
-    const headers = { 'Content-Type': 'application/json' };
-    if (API_KEY) {
-      headers['x-api-key'] = API_KEY;
-      headers['anthropic-version'] = '2023-06-01';
-    }
+    log('Connecting to proxy at ' + PROXY_URL + ' ...');
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
+    let res;
+    try {
+      res = await fetch(PROXY_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 4000,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+    } catch(fetchErr) {
+      throw new Error(
+        `Cannot reach proxy at ${PROXY_URL}. ` +
+        `Make sure proxy.js is running: ANTHROPIC_API_KEY=sk-ant-... node proxy.js`
+      );
+    }
 
     setProgress(75);
     log('Parsing AI response...');
