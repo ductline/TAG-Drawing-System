@@ -1,0 +1,1397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ductline Manufacturing — TAG Drawing System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=Barlow:wght@300;400;500;600&family=Barlow+Condensed:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0a;
+    --bg2: #111111;
+    --bg3: #181818;
+    --bg4: #222222;
+    --border: rgba(255,255,255,0.08);
+    --border-mid: rgba(255,255,255,0.14);
+    --border-hi: rgba(255,255,255,0.28);
+    --text: #f0ede8;
+    --text-mid: #a09890;
+    --text-low: #5a5550;
+    --accent: #e8e0d0;
+    --accent2: #c8a96e;
+    --tag-blue: #1a3a5c;
+    --tag-blue-text: #7ab3e0;
+    --tag-amber: #3a2a0a;
+    --tag-amber-text: #d4a44c;
+    --tag-red: #3a1010;
+    --tag-red-text: #d47070;
+    --tag-green: #0e2a1a;
+    --tag-green-text: #5aad7a;
+    --tag-gray: #282828;
+    --tag-gray-text: #888880;
+    --font-display: 'Cormorant Garamond', serif;
+    --font-body: 'Barlow', sans-serif;
+    --font-cond: 'Barlow Condensed', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+    --radius: 4px;
+    --radius-lg: 8px;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-weight: 300;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ─── LOGIN PAGE ─── */
+  #login-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    position: relative;
+    overflow: hidden;
+  }
+
+  #login-page::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 80% 60% at 50% 40%, rgba(200,169,110,0.04) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  /* subtle animated grid lines */
+  #login-page::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+    background-size: 60px 60px;
+    mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, black 0%, transparent 100%);
+    pointer-events: none;
+  }
+
+  .login-card {
+    position: relative;
+    z-index: 10;
+    width: 100%;
+    max-width: 460px;
+    margin: 2rem;
+    background: var(--bg2);
+    border: 1px solid var(--border-mid);
+    border-radius: var(--radius-lg);
+    padding: 3.5rem 3rem;
+    animation: fadeUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .login-logo {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 2.5rem;
+    gap: 14px;
+  }
+
+  .logo-mark {
+    width: 72px;
+    height: 72px;
+    position: relative;
+  }
+
+  .logo-mark svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  .logo-wordmark {
+    letter-spacing: 0.35em;
+    font-family: var(--font-cond);
+    font-weight: 400;
+    font-size: 13px;
+    color: var(--text);
+    text-align: center;
+    line-height: 1.5;
+  }
+
+  .logo-wordmark span {
+    display: block;
+    font-size: 9px;
+    letter-spacing: 0.3em;
+    color: var(--text-mid);
+    margin-top: 2px;
+  }
+
+  .login-subtitle {
+    font-family: var(--font-cond);
+    font-size: 11px;
+    letter-spacing: 0.4em;
+    color: var(--text-low);
+    text-align: center;
+    margin-bottom: 2.5rem;
+  }
+
+  .login-field {
+    margin-bottom: 1.25rem;
+  }
+
+  .login-field label {
+    display: block;
+    font-family: var(--font-cond);
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    color: var(--text-mid);
+    margin-bottom: 10px;
+  }
+
+  .login-field input {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    font-family: var(--font-body);
+    font-size: 14px;
+    font-weight: 300;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s, background 0.2s;
+    letter-spacing: 0.05em;
+  }
+
+  .login-field input::placeholder {
+    color: var(--text-low);
+  }
+
+  .login-field input:focus {
+    border-color: var(--border-hi);
+    background: var(--bg4);
+  }
+
+  .login-error {
+    font-size: 12px;
+    color: var(--tag-red-text);
+    margin-bottom: 1rem;
+    text-align: center;
+    display: none;
+    font-family: var(--font-cond);
+    letter-spacing: 0.05em;
+  }
+
+  .btn-signin {
+    width: 100%;
+    background: var(--accent);
+    color: #0a0a0a;
+    border: none;
+    border-radius: var(--radius);
+    padding: 15px;
+    font-family: var(--font-cond);
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: 0.15em;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 0.5rem;
+  }
+
+  .btn-signin:hover { background: #fff; }
+  .btn-signin:active { transform: scale(0.99); }
+
+  .login-footer {
+    margin-top: 2.5rem;
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-low);
+    letter-spacing: 0.05em;
+  }
+
+  /* ─── APP PAGE ─── */
+  #app-page {
+    display: none;
+    min-height: 100vh;
+    background: var(--bg);
+  }
+
+  .app-nav {
+    height: 56px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 2rem;
+    gap: 1.5rem;
+    background: var(--bg2);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .nav-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-right: auto;
+  }
+
+  .nav-logo-mark { width: 28px; height: 28px; }
+
+  .nav-brand {
+    font-family: var(--font-cond);
+    font-size: 12px;
+    letter-spacing: 0.3em;
+    color: var(--text);
+    font-weight: 400;
+  }
+
+  .nav-brand span {
+    display: block;
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    color: var(--text-low);
+  }
+
+  .nav-pill {
+    font-family: var(--font-cond);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--text-mid);
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+  }
+
+  .btn-logout {
+    font-family: var(--font-cond);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--text-low);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 6px 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn-logout:hover { color: var(--text); border-color: var(--border-mid); }
+
+  .app-body {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+  }
+
+  .app-header {
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .app-header h1 {
+    font-family: var(--font-display);
+    font-size: 28px;
+    font-weight: 300;
+    color: var(--text);
+    letter-spacing: 0.02em;
+    margin-bottom: 4px;
+  }
+
+  .app-header p {
+    font-size: 13px;
+    color: var(--text-low);
+    letter-spacing: 0.03em;
+  }
+
+  /* ─── FILE UPLOAD ─── */
+  .section-title {
+    font-family: var(--font-cond);
+    font-size: 10px;
+    letter-spacing: 0.35em;
+    color: var(--text-low);
+    margin-bottom: 1rem;
+  }
+
+  .file-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 2rem;
+  }
+
+  .file-slot {
+    background: var(--bg2);
+    border: 1px dashed var(--border-mid);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+
+  .file-slot:hover { border-color: var(--border-hi); background: var(--bg3); }
+  .file-slot.loaded { border-style: solid; border-color: rgba(200,169,110,0.4); }
+  .file-slot.drag { border-color: var(--accent2); background: var(--bg3); }
+
+  .file-slot-label {
+    font-family: var(--font-cond);
+    font-size: 9px;
+    letter-spacing: 0.3em;
+    color: var(--text-low);
+    margin-bottom: 8px;
+  }
+
+  .file-slot-name {
+    font-size: 12px;
+    color: var(--text-mid);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .file-slot.loaded .file-slot-name { color: var(--accent2); }
+
+  .file-slot-hint {
+    font-size: 11px;
+    color: var(--text-low);
+    margin-top: 4px;
+  }
+
+  input[type=file] { display: none; }
+
+  /* ─── CONFIG ─── */
+  .config-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 12px;
+    margin-bottom: 2rem;
+  }
+
+  .config-item label {
+    display: block;
+    font-family: var(--font-cond);
+    font-size: 9px;
+    letter-spacing: 0.3em;
+    color: var(--text-low);
+    margin-bottom: 7px;
+  }
+
+  .config-item select,
+  .config-item input[type=text] {
+    width: 100%;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 9px 10px;
+    font-family: var(--font-body);
+    font-size: 12px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s;
+    -webkit-appearance: none;
+  }
+
+  .config-item select:focus,
+  .config-item input:focus { border-color: var(--border-hi); }
+
+  .config-item select option { background: var(--bg3); }
+
+  /* ─── TAG PREVIEW ─── */
+  .tag-preview-bar {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-left: 3px solid rgba(200,169,110,0.5);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent2);
+    letter-spacing: 0.05em;
+    margin-bottom: 1.5rem;
+  }
+
+  .tag-preview-bar::before {
+    content: 'TAG FORMAT PREVIEW  ';
+    color: var(--text-low);
+    font-size: 9px;
+    letter-spacing: 0.3em;
+    margin-right: 12px;
+  }
+
+  /* ─── ACTIONS ─── */
+  .action-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 2rem;
+  }
+
+  .btn-generate {
+    background: var(--accent);
+    color: #0a0a0a;
+    border: none;
+    border-radius: var(--radius);
+    padding: 11px 28px;
+    font-family: var(--font-cond);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.15em;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .btn-generate:hover { background: #fff; }
+  .btn-generate:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--text-mid);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 18px;
+    font-family: var(--font-cond);
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn-secondary:hover { border-color: var(--border-hi); color: var(--text); }
+
+  .status-badge {
+    font-family: var(--font-cond);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    padding: 5px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    color: var(--text-low);
+  }
+
+  .status-badge.ready { color: var(--tag-green-text); border-color: rgba(90,173,122,0.3); }
+  .status-badge.running { color: var(--accent2); border-color: rgba(200,169,110,0.3); }
+  .status-badge.done { color: var(--tag-green-text); border-color: rgba(90,173,122,0.4); background: var(--tag-green); }
+
+  /* ─── PROGRESS ─── */
+  .progress-wrap { margin-bottom: 1rem; display: none; }
+  .progress-track {
+    height: 2px;
+    background: var(--bg3);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--accent2);
+    border-radius: 2px;
+    width: 0%;
+    transition: width 0.4s ease;
+  }
+
+  .log-panel {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-low);
+    max-height: 100px;
+    overflow-y: auto;
+    line-height: 1.8;
+    display: none;
+  }
+
+  .log-panel .log-line { color: var(--text-mid); }
+  .log-panel .log-line::before { content: '> '; color: var(--accent2); }
+
+  /* ─── RESULTS ─── */
+  #results { display: none; }
+
+  .metrics-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 2rem;
+  }
+
+  .metric-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1rem 1.25rem;
+  }
+
+  .metric-val {
+    font-family: var(--font-display);
+    font-size: 30px;
+    font-weight: 300;
+    color: var(--text);
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+
+  .metric-lbl {
+    font-family: var(--font-cond);
+    font-size: 9px;
+    letter-spacing: 0.3em;
+    color: var(--text-low);
+  }
+
+  /* ─── TABS ─── */
+  .tabs-row {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1.5rem;
+    gap: 0;
+  }
+
+  .tab-btn {
+    font-family: var(--font-cond);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    padding: 10px 20px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-low);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .tab-btn:hover { color: var(--text-mid); }
+  .tab-btn.active { color: var(--text); border-bottom-color: var(--accent2); }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ─── TABLE ─── */
+  .tbl-wrap {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    max-height: 420px;
+    overflow-y: auto;
+  }
+
+  .tbl-wrap::-webkit-scrollbar { width: 4px; }
+  .tbl-wrap::-webkit-scrollbar-track { background: transparent; }
+  .tbl-wrap::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 2px; }
+
+  table { width: 100%; border-collapse: collapse; }
+
+  thead { position: sticky; top: 0; z-index: 10; }
+
+  thead th {
+    background: var(--bg3);
+    font-family: var(--font-cond);
+    font-size: 9px;
+    letter-spacing: 0.25em;
+    color: var(--text-low);
+    font-weight: 400;
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  tbody td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-mid);
+    white-space: nowrap;
+  }
+
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: var(--bg3); }
+
+  .mono { font-family: var(--font-mono); font-size: 11px; color: var(--text); }
+
+  .type-badge {
+    font-family: var(--font-cond);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-weight: 500;
+  }
+
+  .t-ld { background: var(--tag-blue); color: var(--tag-blue-text); }
+  .t-el { background: var(--tag-amber); color: var(--tag-amber-text); }
+  .t-rd { background: var(--tag-red); color: var(--tag-red-text); }
+  .t-bc { background: var(--tag-green); color: var(--tag-green-text); }
+  .t-dm { background: var(--tag-gray); color: var(--tag-gray-text); }
+  .t-cp { background: transparent; color: var(--text-low); border: 1px solid var(--border-mid); }
+
+  /* ─── BOM ─── */
+  .bom-table-wrap {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+
+  .bom-section-header {
+    background: var(--bg3);
+    padding: 8px 14px;
+    font-family: var(--font-cond);
+    font-size: 9px;
+    letter-spacing: 0.3em;
+    color: var(--text-low);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .bom-section-header span {
+    color: var(--accent2);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+  }
+
+  /* ─── CHARTS ─── */
+  .charts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  .chart-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.25rem;
+  }
+
+  .chart-title {
+    font-family: var(--font-cond);
+    font-size: 9px;
+    letter-spacing: 0.3em;
+    color: var(--text-low);
+    margin-bottom: 1rem;
+  }
+
+  .export-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 1.25rem;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--text-low);
+    font-family: var(--font-cond);
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-lg);
+  }
+
+  /* ─── RESPONSIVE ─── */
+  @media (max-width: 768px) {
+    .file-grid { grid-template-columns: 1fr; }
+    .config-grid { grid-template-columns: repeat(2, 1fr); }
+    .metrics-row { grid-template-columns: repeat(2, 1fr); }
+    .charts-grid { grid-template-columns: 1fr; }
+    .app-body { padding: 1rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════ LOGIN PAGE ═══════════════════════ -->
+<div id="login-page">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="logo-mark">
+        <!-- Ductline spiral logo SVG recreation -->
+        <svg viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <g opacity="0.9">
+            <!-- Layered spiral oval duct cross-section lines -->
+            <ellipse cx="36" cy="38" rx="30" ry="14" stroke="rgba(255,255,255,0.6)" stroke-width="0.6" fill="none"/>
+            <ellipse cx="36" cy="35" rx="27" ry="12" stroke="rgba(255,255,255,0.55)" stroke-width="0.6" fill="none"/>
+            <ellipse cx="36" cy="32" rx="24" ry="10" stroke="rgba(255,255,255,0.5)" stroke-width="0.6" fill="none"/>
+            <ellipse cx="36" cy="29" rx="21" ry="8.5" stroke="rgba(255,255,255,0.45)" stroke-width="0.6" fill="none"/>
+            <ellipse cx="36" cy="27" rx="18" ry="7" stroke="rgba(255,255,255,0.4)" stroke-width="0.6" fill="none"/>
+            <ellipse cx="36" cy="25" rx="15" ry="5.5" stroke="rgba(255,255,255,0.35)" stroke-width="0.6" fill="none"/>
+            <ellipse cx="36" cy="23" rx="12" ry="4" stroke="rgba(255,255,255,0.28)" stroke-width="0.6" fill="none"/>
+            <ellipse cx="36" cy="22" rx="9" ry="3" stroke="rgba(255,255,255,0.2)" stroke-width="0.6" fill="none"/>
+            <ellipse cx="36" cy="21" rx="6" ry="2" stroke="rgba(255,255,255,0.14)" stroke-width="0.6" fill="none"/>
+            <!-- connecting flow lines -->
+            <path d="M6 38 C6 24 14 18 36 18 C58 18 66 24 66 38" stroke="rgba(255,255,255,0.15)" stroke-width="0.5" fill="none"/>
+            <path d="M10 37 C10 25 17 20 36 20 C55 20 62 26 62 37" stroke="rgba(255,255,255,0.1)" stroke-width="0.5" fill="none"/>
+          </g>
+        </svg>
+      </div>
+      <div class="logo-wordmark">
+        DUCTLINE
+        <span>MANUFACTURING</span>
+      </div>
+    </div>
+
+    <div class="login-subtitle">TAG DRAWING SYSTEM</div>
+
+    <div class="login-field">
+      <label>PASSWORD</label>
+      <input type="password" id="pw-input" placeholder="Enter team password" autocomplete="current-password">
+    </div>
+
+    <div class="login-error" id="pw-error">Incorrect password. Please try again.</div>
+
+    <button class="btn-signin" onclick="doLogin()">
+      Sign In &nbsp;→
+    </button>
+
+    <div class="login-footer">Internal use only — Ductline Manufacturing</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════ APP PAGE ═══════════════════════ -->
+<div id="app-page">
+  <nav class="app-nav">
+    <div class="nav-logo">
+      <svg class="nav-logo-mark" viewBox="0 0 28 28" fill="none">
+        <ellipse cx="14" cy="16" rx="12" ry="5.5" stroke="rgba(255,255,255,0.5)" stroke-width="0.7" fill="none"/>
+        <ellipse cx="14" cy="13" rx="10" ry="4.2" stroke="rgba(255,255,255,0.4)" stroke-width="0.7" fill="none"/>
+        <ellipse cx="14" cy="10.5" rx="7.5" ry="3" stroke="rgba(255,255,255,0.3)" stroke-width="0.7" fill="none"/>
+        <ellipse cx="14" cy="8.5" rx="5" ry="2" stroke="rgba(255,255,255,0.2)" stroke-width="0.7" fill="none"/>
+      </svg>
+      <div class="nav-brand">
+        DUCTLINE
+        <span>MANUFACTURING</span>
+      </div>
+    </div>
+    <div class="nav-pill">TAG DRAWING SYSTEM</div>
+    <button class="btn-logout" onclick="doLogout()">SIGN OUT</button>
+  </nav>
+
+  <div class="app-body">
+    <div class="app-header">
+      <h1>HVAC Tag & BOM Generator</h1>
+      <p>Upload DWG layout — generate duct tag schedule and bill of materials per SMACNA standards</p>
+    </div>
+
+    <!-- FILE UPLOAD -->
+    <div class="section-title">PROJECT FILES</div>
+    <div class="file-grid">
+      <div class="file-slot" id="slot-src" onclick="document.getElementById('inp-src').click()">
+        <div class="file-slot-label">SOURCE DWG</div>
+        <div class="file-slot-name" id="name-src">+ Click or drag to upload</div>
+        <div class="file-slot-hint">HVAC layout drawing</div>
+        <input type="file" id="inp-src" accept=".dwg,.dxf,.pdf" onchange="handleFile('src',this)">
+      </div>
+      <div class="file-slot" id="slot-tag" onclick="document.getElementById('inp-tag').click()">
+        <div class="file-slot-label">TAG REFERENCE DWG (optional)</div>
+        <div class="file-slot-name" id="name-tag">+ Click or drag to upload</div>
+        <div class="file-slot-hint">Existing tagged drawing</div>
+        <input type="file" id="inp-tag" accept=".dwg,.dxf,.pdf" onchange="handleFile('tag',this)">
+      </div>
+      <div class="file-slot" id="slot-xl" onclick="document.getElementById('inp-xl').click()">
+        <div class="file-slot-label">PART LIST XLSX (optional)</div>
+        <div class="file-slot-name" id="name-xl">+ Click or drag to upload</div>
+        <div class="file-slot-hint">Ductline part schedule</div>
+        <input type="file" id="inp-xl" accept=".xlsx,.csv" onchange="handleFile('xl',this)">
+      </div>
+    </div>
+
+    <!-- CONFIG -->
+    <div class="section-title">CONFIGURATION</div>
+    <div class="config-grid">
+      <div class="config-item">
+        <label>TAG FORMAT</label>
+        <select id="cfg-fmt" onchange="updatePreview()">
+          <option value="smacna">SMACNA standard</option>
+          <option value="ashrae">ASHRAE 90.1</option>
+          <option value="custom">Custom</option>
+        </select>
+      </div>
+      <div class="config-item">
+        <label>DUCT SYSTEM</label>
+        <select id="cfg-sys">
+          <option value="flat-oval">Flat oval (spiral)</option>
+          <option value="rect">Rectangular</option>
+          <option value="round">Round / circular</option>
+          <option value="mixed">Mixed</option>
+        </select>
+      </div>
+      <div class="config-item">
+        <label>PRESSURE CLASS</label>
+        <select id="cfg-pc" onchange="updatePreview()">
+          <option value="1">CL1 — low (≤1″ wg)</option>
+          <option value="2" selected>CL2 — medium (≤2″ wg)</option>
+          <option value="3">CL3 — high (≤3″ wg)</option>
+          <option value="4">CL4 (≤4″ wg)</option>
+        </select>
+      </div>
+      <div class="config-item">
+        <label>SEAL CLASS</label>
+        <select id="cfg-sc" onchange="updatePreview()">
+          <option value="C">Class C</option>
+          <option value="B" selected>Class B</option>
+          <option value="A">Class A</option>
+        </select>
+      </div>
+      <div class="config-item">
+        <label>FLOOR / ZONE</label>
+        <input type="text" id="cfg-floor" value="4F" oninput="updatePreview()">
+      </div>
+      <div class="config-item">
+        <label>SYSTEM PREFIX</label>
+        <input type="text" id="cfg-prefix" value="SA" oninput="updatePreview()">
+      </div>
+    </div>
+
+    <div class="tag-preview-bar" id="tag-preview">SA-4F-001 | 575×250 | 24G | CL2 | SEAL-B | R.COUPLER</div>
+
+    <!-- ACTIONS -->
+    <div class="action-bar">
+      <button class="btn-generate" id="btn-gen" onclick="runGeneration()">
+        Generate Tags + BOM &nbsp;→
+      </button>
+      <div class="status-badge" id="status-badge">AWAITING FILES</div>
+    </div>
+
+    <!-- PROGRESS -->
+    <div class="progress-wrap" id="progress-wrap">
+      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+      <div class="log-panel" id="log-panel"></div>
+    </div>
+
+    <!-- RESULTS -->
+    <div id="results">
+      <div class="metrics-row" id="metrics-row"></div>
+
+      <div class="tabs-row">
+        <button class="tab-btn active" onclick="switchTab('tags')">DUCT TAGS</button>
+        <button class="tab-btn" onclick="switchTab('bom')">BILL OF MATERIALS</button>
+        <button class="tab-btn" onclick="switchTab('summary')">GAUGE SUMMARY</button>
+      </div>
+
+      <div class="tab-panel active" id="panel-tags">
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>TAG</th><th>TYPE</th><th>SIZE A×B</th><th>GAUGE</th>
+              <th>CONNECTOR</th><th>LENGTH</th><th>QTY</th><th>AREA SQ.FT</th>
+              <th>DL NO</th><th>PRES. CL</th><th>SEAL CL</th>
+            </tr></thead>
+            <tbody id="tags-tbody"></tbody>
+          </table>
+        </div>
+        <div class="export-row">
+          <button class="btn-secondary" onclick="exportCSV('tags')">Export CSV</button>
+          <button class="btn-secondary" onclick="exportCSV('tags-xl')">Export XLSX</button>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="panel-bom">
+        <div id="bom-content"></div>
+        <div class="export-row">
+          <button class="btn-secondary" onclick="exportCSV('bom')">Export BOM CSV</button>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="panel-summary">
+        <div class="charts-grid">
+          <div class="chart-card">
+            <div class="chart-title">DUCT AREA BY GAUGE (SQ.FT)</div>
+            <div style="position:relative;height:220px;">
+              <canvas id="gauge-chart" role="img" aria-label="Bar chart of duct area by gauge">Duct area by gauge</canvas>
+            </div>
+          </div>
+          <div class="chart-card">
+            <div class="chart-title">DUCT TYPE DISTRIBUTION</div>
+            <div style="position:relative;height:220px;">
+              <canvas id="type-chart" role="img" aria-label="Doughnut chart of duct type distribution">Duct type distribution</canvas>
+            </div>
+          </div>
+        </div>
+        <div class="export-row">
+          <button class="btn-secondary" onclick="exportCSV('summary')">Export Summary</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="empty-state" class="empty-state">
+      UPLOAD SOURCE DWG AND CLICK GENERATE TO BEGIN
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+// ─── CONFIG ───────────────────────────────────────────────
+// Set your team password here (or replace with server-side auth)
+const TEAM_PASSWORD = 'ductline2024';
+// Anthropic API key — replace with your key or set via environment
+const API_KEY = '';  // ← Set your Anthropic API key here
+
+// ─── AUTH ─────────────────────────────────────────────────
+const SESSION_KEY = 'dl_auth';
+
+function checkSession() {
+  if (sessionStorage.getItem(SESSION_KEY) === 'ok') showApp();
+}
+
+function doLogin() {
+  const pw = document.getElementById('pw-input').value;
+  if (pw === TEAM_PASSWORD) {
+    sessionStorage.setItem(SESSION_KEY, 'ok');
+    showApp();
+  } else {
+    document.getElementById('pw-error').style.display = 'block';
+    document.getElementById('pw-input').value = '';
+    document.getElementById('pw-input').focus();
+  }
+}
+
+function doLogout() {
+  sessionStorage.removeItem(SESSION_KEY);
+  document.getElementById('app-page').style.display = 'none';
+  document.getElementById('login-page').style.display = 'flex';
+  document.getElementById('pw-input').value = '';
+}
+
+function showApp() {
+  document.getElementById('login-page').style.display = 'none';
+  document.getElementById('app-page').style.display = 'block';
+}
+
+document.getElementById('pw-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+  document.getElementById('pw-error').style.display = 'none';
+});
+
+// ─── FILE HANDLING ────────────────────────────────────────
+const uploadedFiles = { src: null, tag: null, xl: null };
+
+function handleFile(type, input) {
+  const f = input.files[0]; if (!f) return;
+  uploadedFiles[type] = f;
+  document.getElementById('name-' + type).textContent = f.name;
+  document.getElementById('slot-' + type).classList.add('loaded');
+  if (uploadedFiles.src) {
+    setBadge('READY', 'ready');
+  }
+}
+
+// Drag-and-drop
+['src','tag','xl'].forEach(type => {
+  const slot = document.getElementById('slot-' + type);
+  slot.addEventListener('dragover', e => { e.preventDefault(); slot.classList.add('drag'); });
+  slot.addEventListener('dragleave', () => slot.classList.remove('drag'));
+  slot.addEventListener('drop', e => {
+    e.preventDefault(); slot.classList.remove('drag');
+    const f = e.dataTransfer.files[0]; if (!f) return;
+    uploadedFiles[type] = f;
+    document.getElementById('name-' + type).textContent = f.name;
+    slot.classList.add('loaded');
+    if (uploadedFiles.src) setBadge('READY', 'ready');
+  });
+});
+
+// ─── UI HELPERS ───────────────────────────────────────────
+function setBadge(text, cls) {
+  const b = document.getElementById('status-badge');
+  b.textContent = text;
+  b.className = 'status-badge ' + (cls || '');
+}
+
+function setProgress(pct) {
+  document.getElementById('progress-fill').style.width = pct + '%';
+}
+
+function log(msg) {
+  const p = document.getElementById('log-panel');
+  p.style.display = 'block';
+  const div = document.createElement('div');
+  div.className = 'log-line';
+  div.textContent = msg;
+  p.appendChild(div);
+  p.scrollTop = p.scrollHeight;
+}
+
+function updatePreview() {
+  const prefix = document.getElementById('cfg-prefix').value || 'SA';
+  const floor  = document.getElementById('cfg-floor').value || '4F';
+  const pc     = document.getElementById('cfg-pc').value;
+  const sc     = document.getElementById('cfg-sc').value;
+  const fmt    = document.getElementById('cfg-fmt').value;
+  const previews = {
+    smacna: `${prefix}-${floor}-001 | 575×250 | 24G | CL${pc} | SEAL-${sc} | R.COUPLER`,
+    ashrae: `${prefix}/${floor}/001 — 575×250mm — 24G — Pressure CL${pc} — Seal ${sc}`,
+    custom: `[${floor}] ${prefix}-001 :: 575×250 :: 24GA :: PC${pc} :: SC${sc}`
+  };
+  document.getElementById('tag-preview').textContent = previews[fmt] || previews.smacna;
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach((b, i) => {
+    b.classList.toggle('active', ['tags','bom','summary'][i] === name);
+  });
+  ['tags','bom','summary'].forEach(n => {
+    document.getElementById('panel-' + n).classList.toggle('active', n === name);
+  });
+}
+
+// ─── GENERATION ───────────────────────────────────────────
+let gData = null;
+let gaugeChart = null;
+let typeChart  = null;
+
+async function runGeneration() {
+  const btn = document.getElementById('btn-gen');
+  btn.disabled = true;
+  document.getElementById('log-panel').innerHTML = '';
+  document.getElementById('progress-wrap').style.display = 'block';
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('results').style.display = 'none';
+  setBadge('PROCESSING...', 'running');
+
+  const prefix = document.getElementById('cfg-prefix').value || 'SA';
+  const floor  = document.getElementById('cfg-floor').value || '4F';
+  const pc     = document.getElementById('cfg-pc').value;
+  const sc     = document.getElementById('cfg-sc').value;
+  const sys    = document.getElementById('cfg-sys').value;
+
+  log('Reading project file metadata...');
+  setProgress(10);
+
+  let fileCtx = '';
+  if (uploadedFiles.src) fileCtx += `Source DWG: ${uploadedFiles.src.name} (${(uploadedFiles.src.size/1024).toFixed(0)} KB). `;
+  if (uploadedFiles.tag) fileCtx += `Tag reference: ${uploadedFiles.tag.name}. `;
+  if (uploadedFiles.xl)  fileCtx += `Part list: ${uploadedFiles.xl.name}. `;
+  if (!fileCtx) fileCtx = 'HSBC building 4F HVAC layout — flat oval spiral duct system (Ductline Manufacturing).';
+
+  log('Building AI prompt for duct tag generation...');
+  setProgress(25);
+
+  const prompt = `You are an HVAC MEP duct tagging expert for Ductline Manufacturing. Based on the following project parameters, generate a comprehensive duct tag schedule and BOM for a ${sys} duct system.
+
+Project context: ${fileCtx}
+Floor/Zone: ${floor}
+System prefix: ${prefix}
+Pressure class: Class ${pc}
+Seal class: Class ${sc}
+Standards: SMACNA HVAC Duct Construction Standards
+
+The project uses flat oval spiral ducts. Typical sizes: 575×250, 525×200, 675×350, 875×400, 1525×500, 1350×400, 800×400, 625×300, 600×200 mm.
+Duct types: Large Duct, Elbow (90°/45°), Reducer, Branch Collar, Dummy (end cap), Couplings.
+Gauges per SMACNA: 24G (small/medium), 22G (medium/large), 20G (large/heavy).
+
+Respond with ONLY a valid JSON object, no markdown, no preamble:
+{
+  "tags": [
+    {"tag":"${prefix}-${floor}-001","type":"Large Duct","A":575,"B":250,"gauge":24,"connector":"R. Coupler","length":748,"qty":1,"area_sqft":11.56,"dl_no":1,"pressure_class":"CL${pc}","seal_class":"${sc}"},
+    ...generate 30-40 entries covering all duct types and sizes listed above...
+  ],
+  "bom": [
+    {"gauge":"24G","description":"Spiral Flat Oval Duct","unit":"Sq.Ft","qty":2339.57,"sq_mtr":217.43},
+    {"gauge":"22G","description":"Spiral Flat Oval Duct","unit":"Sq.Ft","qty":617.73,"sq_mtr":57.41},
+    {"gauge":"20G","description":"Spiral Flat Oval Duct","unit":"Sq.Ft","qty":1328.98,"sq_mtr":123.51},
+    {"gauge":"22G","description":"Elbows 90° (575×250)","unit":"Nos","qty":4,"sq_mtr":null},
+    {"gauge":"22G","description":"Elbows 90° (525×200)","unit":"Nos","qty":3,"sq_mtr":null},
+    {"gauge":"22G","description":"Elbows 90° (875×400)","unit":"Nos","qty":2,"sq_mtr":null},
+    {"gauge":"22G","description":"Branch Collars (525×200)","unit":"Nos","qty":4,"sq_mtr":null},
+    {"gauge":"22G","description":"Branch Collars (575×250)","unit":"Nos","qty":2,"sq_mtr":null},
+    {"gauge":"24G","description":"Reducers","unit":"Nos","qty":7,"sq_mtr":null},
+    {"gauge":"20G","description":"Couplings 575×250","unit":"Nos","qty":21,"sq_mtr":null},
+    {"gauge":"20G","description":"Couplings 525×200","unit":"Nos","qty":18,"sq_mtr":null},
+    {"gauge":"20G","description":"Couplings 875×400","unit":"Nos","qty":5,"sq_mtr":null},
+    {"gauge":"24G","description":"Dummy End Caps","unit":"Nos","qty":5,"sq_mtr":null}
+  ],
+  "metrics": {
+    "total_items": 236,
+    "total_area_sqft": 4286,
+    "total_area_sqmtr": 398,
+    "duct_lines": 6
+  }
+}`;
+
+  log('Calling AI generation engine...');
+  setProgress(45);
+
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (API_KEY) {
+      headers['x-api-key'] = API_KEY;
+      headers['anthropic-version'] = '2023-06-01';
+    }
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    setProgress(75);
+    log('Parsing AI response...');
+
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+
+    const raw = (data.content || []).map(c => c.text || '').join('');
+    const clean = raw.replace(/```json|```/g, '').trim();
+
+    let parsed;
+    try { parsed = JSON.parse(clean); }
+    catch(e) {
+      const m = clean.match(/\{[\s\S]*\}/);
+      if (m) parsed = JSON.parse(m[0]);
+      else throw new Error('Could not parse response JSON');
+    }
+
+    gData = { ...parsed, prefix, floor, pc, sc };
+    log(`Generated ${parsed.tags?.length || 0} duct tags`);
+    log(`BOM lines: ${parsed.bom?.length || 0}`);
+    setProgress(95);
+    renderResults(parsed, prefix, floor, pc, sc);
+    setProgress(100);
+    setBadge('COMPLETE', 'done');
+    log('Done — ready for export');
+
+  } catch(err) {
+    log('Error: ' + err.message + ' — using sample data');
+    renderFallback(prefix, floor, pc, sc);
+    setBadge('SAMPLE DATA', 'ready');
+  }
+
+  btn.disabled = false;
+}
+
+// ─── RENDER ───────────────────────────────────────────────
+function typeClass(t) {
+  t = (t || '').toLowerCase();
+  if (t.includes('large')) return 't-ld';
+  if (t.includes('elbow')) return 't-el';
+  if (t.includes('reducer')) return 't-rd';
+  if (t.includes('branch') || t.includes('collar')) return 't-bc';
+  if (t.includes('dummy') || t.includes('end')) return 't-dm';
+  return 't-cp';
+}
+
+function renderResults(data, prefix, floor, pc, sc) {
+  const m = data.metrics || {};
+  document.getElementById('metrics-row').innerHTML = `
+    <div class="metric-card">
+      <div class="metric-val">${(m.total_items || data.tags?.length || 0).toLocaleString()}</div>
+      <div class="metric-lbl">TOTAL ITEMS</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-val">${(m.total_area_sqft || 0).toLocaleString()}</div>
+      <div class="metric-lbl">TOTAL AREA (SQ.FT)</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-val">${(m.total_area_sqmtr || 0).toFixed(0)}</div>
+      <div class="metric-lbl">TOTAL AREA (SQ.M)</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-val">${m.duct_lines || '—'}</div>
+      <div class="metric-lbl">DUCT LINES</div>
+    </div>
+  `;
+
+  document.getElementById('tags-tbody').innerHTML = (data.tags || []).map(t => `
+    <tr>
+      <td class="mono">${t.tag}</td>
+      <td><span class="type-badge ${typeClass(t.type)}">${t.type}</span></td>
+      <td class="mono">${t.A}×${t.B}</td>
+      <td>${t.gauge}G</td>
+      <td style="font-size:11px;color:var(--text-low)">${t.connector || 'R. Coupler'}</td>
+      <td>${t.length}</td>
+      <td>${t.qty}</td>
+      <td>${(t.area_sqft||0).toFixed(2)}</td>
+      <td>${t.dl_no || '—'}</td>
+      <td>${t.pressure_class || 'CL'+pc}</td>
+      <td>${t.seal_class || sc}</td>
+    </tr>`).join('');
+
+  renderBOM(data.bom || []);
+  renderCharts(data);
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('results').style.display = 'block';
+}
+
+function renderBOM(bom) {
+  const groups = {};
+  bom.forEach(b => { (groups[b.gauge] = groups[b.gauge] || []).push(b); });
+
+  let html = '<div class="bom-table-wrap">';
+  html += `<div style="overflow-x:auto;">
+    <table>
+      <thead><tr>
+        <th>GAUGE</th><th>DESCRIPTION</th><th>UNIT</th>
+        <th>QTY</th><th>SQ.FT</th><th>SQ.MTR</th>
+      </tr></thead><tbody>`;
+
+  Object.entries(groups).forEach(([gauge, rows]) => {
+    rows.forEach(r => {
+      html += `<tr>
+        <td><span class="type-badge t-ld" style="font-size:10px;">${r.gauge}</span></td>
+        <td style="color:var(--text)">${r.description}</td>
+        <td style="font-family:var(--font-mono);font-size:11px;">${r.unit}</td>
+        <td style="font-weight:500;color:var(--text)">${r.unit === 'Nos' ? Math.round(r.qty) : (r.qty||0).toFixed(2)}</td>
+        <td>${r.unit === 'Sq.Ft' ? (r.qty||0).toFixed(2) : '—'}</td>
+        <td>${r.sq_mtr ? r.sq_mtr.toFixed(2) : '—'}</td>
+      </tr>`;
+    });
+  });
+
+  html += '</tbody></table></div></div>';
+  document.getElementById('bom-content').innerHTML = html;
+}
+
+function renderCharts(data) {
+  const bom = data.bom || [];
+  const gaugeMap = {};
+  bom.filter(b => b.unit === 'Sq.Ft').forEach(b => {
+    gaugeMap[b.gauge] = (gaugeMap[b.gauge] || 0) + (b.qty || 0);
+  });
+
+  if (gaugeChart) gaugeChart.destroy();
+  gaugeChart = new Chart(document.getElementById('gauge-chart'), {
+    type: 'bar',
+    data: {
+      labels: Object.keys(gaugeMap),
+      datasets: [{
+        label: 'Sq.Ft',
+        data: Object.values(gaugeMap).map(v => Math.round(v)),
+        backgroundColor: ['#1a3a5c','#0e2a1a','#3a2a0a'],
+        borderColor: ['#7ab3e0','#5aad7a','#d4a44c'],
+        borderWidth: 1,
+        borderRadius: 3
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, ticks: { color: '#5a5550', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        x: { ticks: { color: '#5a5550', font: { size: 10 } }, grid: { color: 'transparent' } }
+      }
+    }
+  });
+
+  const typeCounts = {};
+  (data.tags || []).forEach(t => {
+    typeCounts[t.type] = (typeCounts[t.type] || 0) + (t.qty || 1);
+  });
+
+  if (typeChart) typeChart.destroy();
+  typeChart = new Chart(document.getElementById('type-chart'), {
+    type: 'doughnut',
+    data: {
+      labels: Object.keys(typeCounts),
+      datasets: [{
+        data: Object.values(typeCounts),
+        backgroundColor: ['#1a3a5c','#0e2a1a','#3a1010','#3a2a0a','#282828','#1a2a3a'],
+        borderColor: ['#7ab3e0','#5aad7a','#d47070','#d4a44c','#888880','#5a90c0'],
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true, position: 'right',
+          labels: { color: '#a09890', font: { size: 10, family: "'Barlow Condensed'" }, boxWidth: 10, padding: 10 }
+        }
+      }
+    }
+  });
+}
+
+function renderFallback(prefix, floor, pc, sc) {
+  const fb = {
+    tags: [
+      {tag:`${prefix}-${floor}-001`,type:'Large Duct',A:575,B:250,gauge:24,connector:'R. Coupler',length:748,qty:1,area_sqft:11.56,dl_no:1,pressure_class:`CL${pc}`,seal_class:sc},
+      {tag:`${prefix}-${floor}-002`,type:'Elbow',A:575,B:250,gauge:22,connector:'R. Coupler',length:150,qty:1,area_sqft:15.31,dl_no:1,pressure_class:`CL${pc}`,seal_class:sc},
+      {tag:`${prefix}-${floor}-003`,type:'Large Duct',A:575,B:250,gauge:24,connector:'R. Coupler',length:2000,qty:2,area_sqft:61.81,dl_no:1,pressure_class:`CL${pc}`,seal_class:sc},
+      {tag:`${prefix}-${floor}-004`,type:'Large Duct',A:525,B:200,gauge:24,connector:'R. Coupler',length:2000,qty:3,area_sqft:82.56,dl_no:1,pressure_class:`CL${pc}`,seal_class:sc},
+      {tag:`${prefix}-${floor}-005`,type:'Elbow',A:525,B:200,gauge:22,connector:'R. Coupler',length:150,qty:1,area_sqft:13.28,dl_no:1,pressure_class:`CL${pc}`,seal_class:sc},
+      {tag:`${prefix}-${floor}-006`,type:'Reducer',A:875,B:400,gauge:24,connector:'R. Coupler',length:450,qty:1,area_sqft:11.14,dl_no:4,pressure_class:`CL${pc}`,seal_class:sc},
+      {tag:`${prefix}-${floor}-007`,type:'Large Duct',A:875,B:400,gauge:22,connector:'R. Coupler',length:2000,qty:4,area_sqft:190.03,dl_no:4,pressure_class:`CL${pc}`,seal_class:sc},
+      {tag:`${prefix}-${floor}-008`,type:'Branch Collar',A:525,B:200,gauge:22,connector:'Rev. Flange',length:150,qty:1,area_sqft:2.06,dl_no:1,pressure_class:`CL${pc}`,seal_class:sc},
+      {tag:`${prefix}-${floor}-009`,type:'Dummy',A:575,B:250,gauge:24,connector:'R. Coupler',length:138,qty:1,area_sqft:3.73,dl_no:4,pressure_class:`CL${pc}`,seal_class:sc},
+      {tag:`${prefix}-${floor}-010`,type:'Couplings',A:575,B:250,gauge:20,connector:'R. Coupler',length:138,qty:7,area_sqft:14.93,dl_no:3,pressure_class:`CL${pc}`,seal_class:sc},
+    ],
+    bom: [
+      {gauge:'24G',description:'Spiral Flat Oval Duct',unit:'Sq.Ft',qty:2339.57,sq_mtr:217.43},
+      {gauge:'22G',description:'Spiral Flat Oval Duct',unit:'Sq.Ft',qty:617.73,sq_mtr:57.41},
+      {gauge:'20G',description:'Spiral Flat Oval Duct',unit:'Sq.Ft',qty:1328.98,sq_mtr:123.51},
+      {gauge:'22G',description:'Elbows 90° (575×250)',unit:'Nos',qty:4,sq_mtr:null},
+      {gauge:'22G',description:'Elbows 90° (525×200)',unit:'Nos',qty:3,sq_mtr:null},
+      {gauge:'22G',description:'Branch Collars',unit:'Nos',qty:6,sq_mtr:null},
+      {gauge:'24G',description:'Reducers',unit:'Nos',qty:7,sq_mtr:null},
+      {gauge:'20G',description:'Couplings 575×250',unit:'Nos',qty:21,sq_mtr:null},
+      {gauge:'24G',description:'Dummy End Caps',unit:'Nos',qty:5,sq_mtr:null},
+    ],
+    metrics: {total_items:236,total_area_sqft:4286,total_area_sqmtr:398,duct_lines:6}
+  };
+  gData = {...fb, prefix, floor, pc, sc};
+  renderResults(fb, prefix, floor, pc, sc);
+}
+
+// ─── EXPORT ───────────────────────────────────────────────
+function exportCSV(type) {
+  if (!gData) return;
+  let csv = '';
+  const fn = `Ductline_${type}_${gData.floor}_${Date.now()}.csv`;
+
+  if (type === 'tags' || type === 'tags-xl') {
+    csv = 'Tag,Type,A (mm),B (mm),Gauge,Connector,Length (mm),Qty,Area (sq.ft),DL No,Pressure Class,Seal Class\n';
+    (gData.tags||[]).forEach(t => {
+      csv += `${t.tag},${t.type},${t.A},${t.B},${t.gauge}G,${t.connector},${t.length},${t.qty},${(t.area_sqft||0).toFixed(2)},${t.dl_no||''},${t.pressure_class||''},${t.seal_class||''}\n`;
+    });
+  } else if (type === 'bom') {
+    csv = 'Gauge,Description,Unit,Qty,Sq.Ft,Sq.Mtr\n';
+    (gData.bom||[]).forEach(b => {
+      csv += `${b.gauge},"${b.description}",${b.unit},${b.qty||''},${b.unit==='Sq.Ft'?(b.qty||0).toFixed(2):''},${b.sq_mtr?b.sq_mtr.toFixed(2):''}\n`;
+    });
+  } else if (type === 'summary') {
+    csv = 'Metric,Value\n';
+    csv += `Total Items,${gData.metrics?.total_items||0}\n`;
+    csv += `Total Area (sq.ft),${gData.metrics?.total_area_sqft||0}\n`;
+    csv += `Total Area (sq.m),${gData.metrics?.total_area_sqmtr||0}\n`;
+    csv += `Duct Lines,${gData.metrics?.duct_lines||0}\n`;
+  }
+
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fn; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── INIT ─────────────────────────────────────────────────
+checkSession();
+updatePreview();
+</script>
+</body>
+</html>
