@@ -319,7 +319,7 @@ const SK   = 'dl_auth';
 // For AI generation set your proxy URL:
 // Netlify deploy → '/api/messages' (works out of the box)
 // Local dev      → 'http://localhost:3000/api/messages'
-const PROXY_URL = 'https://tagdrawingsystem.nagredy.workers.dev';
+const PROXY_URL = 'https://dm.nagredy.workers.dev';
 
 // ── AUTH ──────────────────────────────────────────────────
 function doLogin() {
@@ -444,11 +444,11 @@ Generate 25-35 tag entries and a full BOM.`;
   addLog('Calling AI generation engine...'); setProg(40);
 
   try {
+    const payload = JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 4000, messages: [{ role: 'user', content: prompt }] });
     const res = await fetch(PROXY_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 4000, messages: [{ role: 'user', content: prompt }] })
-    });
+      headers: { 'Content-Type': 'text/plain' },
+      body: payload
     setProg(75); addLog('Parsing AI response...');
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
