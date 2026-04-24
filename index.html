@@ -446,8 +446,8 @@ Generate 25-35 tag entries and a full BOM.`;
   try {
     const payload = JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 4000, messages: [{ role: 'user', content: prompt }] });
     const res = await fetch(PROXY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: payload
     });
     setProg(75); addLog('Parsing AI response...');
