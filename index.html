@@ -356,7 +356,7 @@ function calcTDF(A,B,C,D,qty,type){
 }
 
 function calcGasket(perim, qty){
-  const mtr  = perim * qty / (300 * 1000); // total metres at 300mm intervals
+  const mtr  = perim * qty / 300;
   const mtr2 = perim * qty / 9200;
   return { mtr, mtr2 };
 }
@@ -523,37 +523,48 @@ async function runGen(){
 
   addLog('Reading project files...');setProg(15);
 
-  const prompt=`You are an HVAC duct engineer for Ductline Manufacturing. Generate a COMPLETE rectangular TDF duct part list matching our internal schedule format exactly.
+  const prompt=`You are an HVAC duct engineer for Ductline Manufacturing. Generate a rectangular TDF duct part list for project: ${job}.
+Drawing lines: ${numDL}. Context: ${ctx}
 
-Project: ${ctx}
-Job: ${job} | Client: ${client} | Drawing Lines: ${numDL}
+STRICT RULES — output must match Ductline Manufacturing internal format exactly:
+1. Use ONLY these duct sizes (A×B mm):
+   18G (perim>7000): 2500×1000 only (perim=7000). Collar: 3110×1220
+   22G (perim 2500-7000): 1500×1000, 1375×900, 1375×800, 1300×900, 1300×800, 1225×800, 1175×800, 1150×800, 1100×1000, 1100×800, 1075×800, 1025×800, 1000×1500, 1000×1400, 1000×1300, 1000×1100, 1000×800, 975×800, 950×800, 925×600, 900×800, 900×700, 875×750, 850×750, 850×600, 800×750, 800×650, 800×500
+   24G (perim<2500): 700×600, 600×500, 500×400, 475×250, 450×400, 250×400
+2. Standard lengths ONLY: 9(closing sheet), 150(elbow/shoe), 300, 382, 410-900(tapers), 529(small duct), 996-1998(straight), 3367(long straight)
+3. Closing Sheet: final_length=9 ALWAYS, connector=TDF
+4. Shoe Piece: connector="Rev. Flange- TDF", final_length=150, C and D are outlet dims (slightly smaller than A,B)
+5. Elbow: E=90, ext1=50, ext2=50 or 142, final_length=150 or 300
+6. Taper: C×D must be different/smaller than A×B (it reduces the duct)
+7. Duct numbers: use tags like 1,1A,1B,1C,2,3...10,D1-D6,B1-B6,C1-C6
+8. For ${numDL} DL lines, generate realistic qty:
+   18G Straight Duct qty: 1-80 per line
+   22G Straight Duct qty: 1-65 per line  
+   24G Straight Duct qty: 1-144 per line
+   Tapers, Elbows, Shoe, Closing: qty 1-12 each
+9. Each DL line must have: Straight Duct (multiple sizes), Small Duct, Taper(s), Closing Sheet, Shoe Piece, Elbow
+10. Total items: ${numDL===1?'40-50':numDL===2?'80-100':'130-160'}
 
-CRITICAL RULES:
-1. Generate 80-120 items spread across ${numDL} drawing lines (DL 1 to ${numDL})
-2. Use EXACT standard duct lengths: 529, 1124, 1154, 1583, 1998, 3367 mm
-3. Large ducts (18G, perimeter>7000mm): qty 1-80 each
-4. Medium ducts (22G, perimeter 2500-7000mm): qty 1-20 each
-5. Small ducts (24G, perimeter<2500mm): qty 1-15 each
-6. Duct types: Straight Duct, Small Duct, Straight Collar, Closing Sheet, Taper (COT), Taper (FLAT-L), Taper (FLAT-R), Elbow, Shoe Piece
-7. Duct numbers: use numeric (1,2,3...) and alphanumeric (1A,1B,D1,D2,B1,C1) tags
-8. Each Taper must have DIFFERENT C,D dimensions from A,B
-9. Each Closing Sheet has final_length=9 ALWAYS
-10. Elbow has E=90, ext1=50, ext2=50 or 142
-11. Shoe Piece has connector="Rev. Flange- TDF"
+REFERENCE DATASET — generate items similar to these (same structure, can vary quantities):
+18G items: {"duct_no":"1","duct_type":"Straight Duct","gauge":18,"connector":"TDF","A":2500,"B":1000,"C":2500,"D":1000,"E":0,"ext1":0,"ext2":0,"final_length":1124,"qty":80,"dl_no":1}
+{"duct_no":"1B","duct_type":"Straight Duct","gauge":18,"connector":"TDF","A":2500,"B":1000,"C":2500,"D":1000,"E":0,"ext1":0,"ext2":0,"final_length":3367,"qty":1,"dl_no":1}
+{"duct_no":"1A","duct_type":"Small Duct","gauge":18,"connector":"TDF","A":2500,"B":1000,"C":2500,"D":1000,"E":0,"ext1":0,"ext2":0,"final_length":514,"qty":3,"dl_no":1}
+{"duct_no":"1C","duct_type":"Closing Sheet","gauge":18,"connector":"TDF","A":2500,"B":1000,"C":2500,"D":1000,"E":0,"ext1":0,"ext2":0,"final_length":9,"qty":3,"dl_no":1}
+{"duct_no":"3","duct_type":"Taper (COT)","gauge":18,"connector":"TDF","A":2500,"B":1000,"C":1500,"D":1000,"E":0,"ext1":0,"ext2":0,"final_length":900,"qty":1,"dl_no":1}
+{"duct_no":"2A","duct_type":"Straight Collar","gauge":18,"connector":"REV-TDF","A":3110,"B":1220,"C":3110,"D":1220,"E":0,"ext1":0,"ext2":0,"final_length":382,"qty":3,"dl_no":1}
+22G items: {"duct_no":"4","duct_type":"Straight Duct","gauge":22,"connector":"TDF","A":1500,"B":1000,"C":1500,"D":1000,"E":0,"ext1":0,"ext2":0,"final_length":1154,"qty":29,"dl_no":1}
+{"duct_no":"26","duct_type":"Straight Duct","gauge":22,"connector":"TDF","A":1100,"B":800,"C":1100,"D":800,"E":0,"ext1":0,"ext2":0,"final_length":1154,"qty":65,"dl_no":1}
+{"duct_no":"29","duct_type":"Straight Duct","gauge":22,"connector":"TDF","A":850,"B":750,"C":850,"D":750,"E":0,"ext1":0,"ext2":0,"final_length":1154,"qty":38,"dl_no":1}
+{"duct_no":"5","duct_type":"Elbow","gauge":22,"connector":"TDF","A":1000,"B":1500,"C":1000,"D":1500,"E":90,"ext1":50,"ext2":142,"final_length":150,"qty":1,"dl_no":1}
+{"duct_no":"9","duct_type":"Shoe Piece","gauge":22,"connector":"Rev. Flange- TDF","A":875,"B":750,"C":800,"D":750,"E":0,"ext1":0,"ext2":0,"final_length":150,"qty":1,"dl_no":1}
+{"duct_no":"25A","duct_type":"Taper (FLAT-L)","gauge":22,"connector":"TDF","A":1300,"B":800,"C":1100,"D":800,"E":0,"ext1":0,"ext2":0,"final_length":469,"qty":1,"dl_no":1}
+{"duct_no":"15","duct_type":"Taper (FLAT-R)","gauge":22,"connector":"TDF","A":800,"B":500,"C":450,"D":400,"E":0,"ext1":0,"ext2":0,"final_length":443,"qty":1,"dl_no":1}
+24G items: {"duct_no":"34","duct_type":"Straight Duct","gauge":24,"connector":"TDF","A":600,"B":500,"C":600,"D":500,"E":0,"ext1":0,"ext2":0,"final_length":1154,"qty":144,"dl_no":1}
+{"duct_no":"20","duct_type":"Elbow","gauge":24,"connector":"TDF","A":250,"B":400,"C":250,"D":400,"E":90,"ext1":50,"ext2":50,"final_length":150,"qty":76,"dl_no":1}
+{"duct_no":"19","duct_type":"Shoe Piece","gauge":24,"connector":"Rev. Flange- TDF","A":475,"B":250,"C":400,"D":250,"E":0,"ext1":0,"ext2":0,"final_length":150,"qty":88,"dl_no":1}
 
-Gauge rules: 18G if (A+B)*2>7000mm, 22G if 2500-7000mm, 24G if <2500mm
-
-Respond ONLY with valid JSON, no markdown, no explanation:
-{
-  "items": [
-    {"duct_no":"1","duct_type":"Straight Duct","gauge":18,"connector":"TDF","A":2500,"B":1000,"C":2500,"D":1000,"E":0,"ext1":0,"ext2":0,"final_length":1124,"qty":50,"dl_no":1},
-    {"duct_no":"3","duct_type":"Taper (COT)","gauge":18,"connector":"TDF","A":2500,"B":1000,"C":1500,"D":1000,"E":0,"ext1":0,"ext2":0,"final_length":900,"qty":1,"dl_no":1},
-    {"duct_no":"5","duct_type":"Elbow","gauge":22,"connector":"TDF","A":1000,"B":1500,"C":1000,"D":1500,"E":90,"ext1":50,"ext2":142,"final_length":150,"qty":1,"dl_no":1},
-    {"duct_no":"9","duct_type":"Shoe Piece","gauge":22,"connector":"Rev. Flange- TDF","A":875,"B":750,"C":800,"D":750,"E":0,"ext1":0,"ext2":0,"final_length":150,"qty":1,"dl_no":1}
-  ]
-}
-
-Generate ${numDL===1?'40-50':numDL===2?'70-90':'100-120'} items. Include all duct types. Start with large 18G ducts reducing down to 24G. Cover all ${numDL} DL numbers.`;
+Respond ONLY with valid JSON, no markdown:
+{"items":[...all items...]}`;
 
   addLog('Calling AI engine...');setProg(40);
 
@@ -719,15 +730,16 @@ function renderAll(items,job,floor){
 
 // ─── SAMPLE DATA ──────────────────────────────────────────────────────────────
 function buildSample(job,floor,numDL){
-  const raw=[
-    {duct_no:'2A',duct_type:'Straight Collar',gauge:18,connector:'REV-TDF',A:3110,B:1220,C:3110,D:1220,E:0,ext1:0,ext2:0,final_length:382,qty:1,dl_no:1},
-    {duct_no:'1C',duct_type:'Closing Sheet',gauge:18,connector:'TDF',A:2500,B:1000,C:2500,D:1000,E:0,ext1:0,ext2:0,final_length:9,qty:1,dl_no:1},
+  // Exact JSW AURANGABAD reference dataset DL1
+  const dl1=[
+    {duct_no:'2A',duct_type:'Straight Collar',gauge:18,connector:'REV-TDF',A:3110,B:1220,C:3110,D:1220,E:0,ext1:0,ext2:0,final_length:382,qty:3,dl_no:1},
+    {duct_no:'1C',duct_type:'Closing Sheet',gauge:18,connector:'TDF',A:2500,B:1000,C:2500,D:1000,E:0,ext1:0,ext2:0,final_length:9,qty:3,dl_no:1},
     {duct_no:'1B',duct_type:'Straight Duct',gauge:18,connector:'TDF',A:2500,B:1000,C:2500,D:1000,E:0,ext1:0,ext2:0,final_length:3367,qty:1,dl_no:1},
-    {duct_no:'1A',duct_type:'Small Duct',gauge:18,connector:'TDF',A:2500,B:1000,C:2500,D:1000,E:0,ext1:0,ext2:0,final_length:514,qty:1,dl_no:1},
-    {duct_no:'1',duct_type:'Straight Duct',gauge:18,connector:'TDF',A:2500,B:1000,C:2500,D:1000,E:0,ext1:0,ext2:0,final_length:1124,qty:50,dl_no:1},
+    {duct_no:'1A',duct_type:'Small Duct',gauge:18,connector:'TDF',A:2500,B:1000,C:2500,D:1000,E:0,ext1:0,ext2:0,final_length:514,qty:3,dl_no:1},
+    {duct_no:'1',duct_type:'Straight Duct',gauge:18,connector:'TDF',A:2500,B:1000,C:2500,D:1000,E:0,ext1:0,ext2:0,final_length:1124,qty:80,dl_no:1},
     {duct_no:'2',duct_type:'Straight Duct',gauge:18,connector:'TDF',A:2500,B:1000,C:2500,D:1000,E:0,ext1:0,ext2:0,final_length:1998,qty:1,dl_no:1},
     {duct_no:'3',duct_type:'Taper (COT)',gauge:18,connector:'TDF',A:2500,B:1000,C:1500,D:1000,E:0,ext1:0,ext2:0,final_length:900,qty:1,dl_no:1},
-    {duct_no:'4',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:1500,B:1000,C:1500,D:1000,E:0,ext1:0,ext2:0,final_length:1154,qty:13,dl_no:1},
+    {duct_no:'4',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:1500,B:1000,C:1500,D:1000,E:0,ext1:0,ext2:0,final_length:1154,qty:29,dl_no:1},
     {duct_no:'5',duct_type:'Elbow',gauge:22,connector:'TDF',A:1000,B:1500,C:1000,D:1500,E:90,ext1:50,ext2:142,final_length:150,qty:1,dl_no:1},
     {duct_no:'4',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:1500,B:1000,C:1500,D:1000,E:0,ext1:0,ext2:0,final_length:1154,qty:2,dl_no:1},
     {duct_no:'6',duct_type:'Elbow',gauge:22,connector:'TDF',A:1000,B:1500,C:1000,D:1500,E:90,ext1:50,ext2:50,final_length:150,qty:1,dl_no:1},
@@ -736,44 +748,127 @@ function buildSample(job,floor,numDL){
     {duct_no:'9',duct_type:'Shoe Piece',gauge:22,connector:'Rev. Flange- TDF',A:875,B:750,C:800,D:750,E:0,ext1:0,ext2:0,final_length:150,qty:1,dl_no:1},
     {duct_no:'10',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:800,B:750,C:800,D:750,E:0,ext1:0,ext2:0,final_length:1154,qty:10,dl_no:1},
     {duct_no:'11',duct_type:'Small Duct',gauge:22,connector:'TDF',A:800,B:750,C:800,D:750,E:0,ext1:0,ext2:0,final_length:529,qty:1,dl_no:1},
+    {duct_no:'12',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:800,B:750,C:800,D:750,E:0,ext1:0,ext2:0,final_length:1304,qty:1,dl_no:1},
     {duct_no:'13',duct_type:'Taper (COT)',gauge:22,connector:'TDF',A:800,B:750,C:800,D:500,E:0,ext1:0,ext2:0,final_length:600,qty:1,dl_no:1},
     {duct_no:'14',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:800,B:500,C:800,D:500,E:0,ext1:0,ext2:0,final_length:1154,qty:12,dl_no:1},
+    {duct_no:'15',duct_type:'Small Duct',gauge:22,connector:'TDF',A:800,B:500,C:800,D:500,E:0,ext1:0,ext2:0,final_length:529,qty:1,dl_no:1},
     {duct_no:'15',duct_type:'Taper (FLAT-R)',gauge:22,connector:'TDF',A:800,B:500,C:450,D:400,E:0,ext1:0,ext2:0,final_length:443,qty:1,dl_no:1},
     {duct_no:'16',duct_type:'Straight Duct',gauge:24,connector:'TDF',A:450,B:400,C:450,D:400,E:0,ext1:0,ext2:0,final_length:1154,qty:6,dl_no:1},
     {duct_no:'17',duct_type:'Straight Duct',gauge:24,connector:'TDF',A:450,B:400,C:450,D:400,E:0,ext1:0,ext2:0,final_length:1583,qty:1,dl_no:1},
     {duct_no:'18',duct_type:'Closing Sheet',gauge:24,connector:'TDF',A:450,B:400,C:450,D:400,E:0,ext1:0,ext2:0,final_length:9,qty:1,dl_no:1},
-    {duct_no:'19',duct_type:'Shoe Piece',gauge:24,connector:'Rev. Flange- TDF',A:475,B:250,C:400,D:250,E:0,ext1:0,ext2:0,final_length:150,qty:5,dl_no:1},
-    {duct_no:'20',duct_type:'Elbow',gauge:24,connector:'TDF',A:250,B:400,C:250,D:400,E:90,ext1:50,ext2:50,final_length:150,qty:5,dl_no:1},
+    {duct_no:'19',duct_type:'Shoe Piece',gauge:24,connector:'Rev. Flange- TDF',A:475,B:250,C:400,D:250,E:0,ext1:0,ext2:0,final_length:150,qty:88,dl_no:1},
+    {duct_no:'20',duct_type:'Elbow',gauge:24,connector:'TDF',A:250,B:400,C:250,D:400,E:90,ext1:50,ext2:50,final_length:150,qty:76,dl_no:1},
     {duct_no:'21',duct_type:'Shoe Piece',gauge:22,connector:'Rev. Flange- TDF',A:1375,B:900,C:1300,D:900,E:0,ext1:0,ext2:0,final_length:150,qty:1,dl_no:1},
     {duct_no:'22',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:1300,B:900,C:1300,D:900,E:0,ext1:0,ext2:0,final_length:1154,qty:8,dl_no:1},
     {duct_no:'23',duct_type:'Taper (COT)',gauge:22,connector:'TDF',A:1300,B:900,C:1300,D:800,E:0,ext1:0,ext2:0,final_length:668,qty:1,dl_no:1},
-    {duct_no:'24',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:1300,B:800,C:1300,D:800,E:0,ext1:0,ext2:0,final_length:1154,qty:13,dl_no:1},
+    {duct_no:'24',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:1300,B:800,C:1300,D:800,E:0,ext1:0,ext2:0,final_length:1154,qty:22,dl_no:1},
     {duct_no:'25',duct_type:'Small Duct',gauge:22,connector:'TDF',A:1300,B:800,C:1300,D:800,E:0,ext1:0,ext2:0,final_length:529,qty:1,dl_no:1},
     {duct_no:'25A',duct_type:'Taper (FLAT-L)',gauge:22,connector:'TDF',A:1300,B:800,C:1100,D:800,E:0,ext1:0,ext2:0,final_length:469,qty:1,dl_no:1},
-    {duct_no:'26',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:1100,B:800,C:1100,D:800,E:0,ext1:0,ext2:0,final_length:1154,qty:13,dl_no:1},
-    {duct_no:'27',duct_type:'Small Duct',gauge:22,connector:'TDF',A:1100,B:800,C:1100,D:800,E:0,ext1:0,ext2:0,final_length:529,qty:1,dl_no:1},
+    {duct_no:'26',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:1100,B:800,C:1100,D:800,E:0,ext1:0,ext2:0,final_length:1154,qty:65,dl_no:1},
+    {duct_no:'27',duct_type:'Small Duct',gauge:22,connector:'TDF',A:1100,B:800,C:1100,D:800,E:0,ext1:0,ext2:0,final_length:529,qty:5,dl_no:1},
     {duct_no:'28',duct_type:'Taper (FLAT-L)',gauge:22,connector:'TDF',A:1100,B:800,C:850,D:750,E:0,ext1:0,ext2:0,final_length:825,qty:1,dl_no:1},
-    {duct_no:'29',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:850,B:750,C:850,D:750,E:0,ext1:0,ext2:0,final_length:1154,qty:13,dl_no:1},
+    {duct_no:'29',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:850,B:750,C:850,D:750,E:0,ext1:0,ext2:0,final_length:1154,qty:38,dl_no:1},
     {duct_no:'30',duct_type:'Taper (COT)',gauge:22,connector:'TDF',A:850,B:750,C:850,D:600,E:0,ext1:0,ext2:0,final_length:553,qty:1,dl_no:1},
-    {duct_no:'31',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:850,B:600,C:850,D:600,E:0,ext1:0,ext2:0,final_length:1154,qty:13,dl_no:1},
-    {duct_no:'32',duct_type:'Small Duct',gauge:22,connector:'TDF',A:850,B:600,C:850,D:600,E:0,ext1:0,ext2:0,final_length:529,qty:1,dl_no:1},
+    {duct_no:'31',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:850,B:600,C:850,D:600,E:0,ext1:0,ext2:0,final_length:1154,qty:64,dl_no:1},
+    {duct_no:'32',duct_type:'Small Duct',gauge:22,connector:'TDF',A:850,B:600,C:850,D:600,E:0,ext1:0,ext2:0,final_length:529,qty:2,dl_no:1},
     {duct_no:'33',duct_type:'Taper (FLAT-L)',gauge:22,connector:'TDF',A:850,B:600,C:600,D:500,E:0,ext1:0,ext2:0,final_length:425,qty:1,dl_no:1},
-    {duct_no:'34',duct_type:'Straight Duct',gauge:24,connector:'TDF',A:600,B:500,C:600,D:500,E:0,ext1:0,ext2:0,final_length:1154,qty:13,dl_no:1},
+    {duct_no:'34',duct_type:'Straight Duct',gauge:24,connector:'TDF',A:600,B:500,C:600,D:500,E:0,ext1:0,ext2:0,final_length:1154,qty:144,dl_no:1},
     {duct_no:'35',duct_type:'Straight Duct',gauge:24,connector:'TDF',A:600,B:500,C:600,D:500,E:0,ext1:0,ext2:0,final_length:1481,qty:1,dl_no:1},
-    {duct_no:'36',duct_type:'Closing Sheet',gauge:24,connector:'TDF',A:600,B:500,C:600,D:500,E:0,ext1:0,ext2:0,final_length:9,qty:1,dl_no:1},
+    {duct_no:'36',duct_type:'Closing Sheet',gauge:24,connector:'TDF',A:600,B:500,C:600,D:500,E:0,ext1:0,ext2:0,final_length:9,qty:6,dl_no:1},
     {duct_no:'37',duct_type:'Elbow',gauge:24,connector:'TDF',A:250,B:400,C:250,D:400,E:90,ext1:50,ext2:50,final_length:300,qty:12,dl_no:1},
+    {duct_no:'38',duct_type:'Shoe Piece',gauge:22,connector:'Rev. Flange- TDF',A:1375,B:800,C:1300,D:800,E:0,ext1:0,ext2:0,final_length:150,qty:1,dl_no:1},
+    {duct_no:'24',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:1300,B:800,C:1300,D:800,E:0,ext1:0,ext2:0,final_length:1154,qty:9,dl_no:1},
+    {duct_no:'39',duct_type:'Taper (FLAT-R)',gauge:22,connector:'TDF',A:1300,B:800,C:1100,D:800,E:0,ext1:0,ext2:0,final_length:748,qty:1,dl_no:1},
+    {duct_no:'40',duct_type:'Taper (FLAT-R)',gauge:22,connector:'TDF',A:1100,B:800,C:850,D:750,E:0,ext1:0,ext2:0,final_length:996,qty:1,dl_no:1},
+    {duct_no:'41',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:850,B:750,C:850,D:750,E:0,ext1:0,ext2:0,final_length:998,qty:1,dl_no:1},
+    {duct_no:'42',duct_type:'Taper (COT)',gauge:22,connector:'TDF',A:850,B:750,C:850,D:600,E:0,ext1:0,ext2:0,final_length:553,qty:1,dl_no:1},
+    {duct_no:'43',duct_type:'Taper (FLAT-R)',gauge:22,connector:'TDF',A:850,B:600,C:600,D:500,E:0,ext1:0,ext2:0,final_length:435,qty:1,dl_no:1},
+    {duct_no:'44',duct_type:'Small Duct',gauge:24,connector:'TDF',A:600,B:500,C:600,D:500,E:0,ext1:0,ext2:0,final_length:529,qty:1,dl_no:1},
+    {duct_no:'45',duct_type:'Straight Duct',gauge:24,connector:'TDF',A:600,B:500,C:600,D:500,E:0,ext1:0,ext2:0,final_length:1201,qty:1,dl_no:1},
+    {duct_no:'46',duct_type:'Shoe Piece',gauge:22,connector:'Rev. Flange- TDF',A:925,B:600,C:850,D:600,E:0,ext1:0,ext2:0,final_length:150,qty:1,dl_no:1},
+    {duct_no:'47',duct_type:'Small Duct',gauge:22,connector:'TDF',A:850,B:600,C:850,D:600,E:0,ext1:0,ext2:0,final_length:800,qty:1,dl_no:1},
+    {duct_no:'48',duct_type:'Taper (FLAT-L)',gauge:22,connector:'TDF',A:850,B:600,C:600,D:500,E:0,ext1:0,ext2:0,final_length:450,qty:1,dl_no:1},
+    {duct_no:'49',duct_type:'Small Duct',gauge:24,connector:'TDF',A:600,B:500,C:600,D:500,E:0,ext1:0,ext2:0,final_length:529,qty:1,dl_no:1},
+    {duct_no:'50',duct_type:'Straight Duct',gauge:24,connector:'TDF',A:600,B:500,C:600,D:500,E:0,ext1:0,ext2:0,final_length:1001,qty:1,dl_no:1},
   ];
-  // Duplicate for more DL lines if needed
-  let result = raw.map(calcItem);
-  if(numDL>=2){
-    const dl2 = raw.slice(7,30).map(r=>calcItem({...r,duct_no:'D'+r.duct_no,dl_no:2}));
-    result = result.concat(dl2);
-  }
-  if(numDL>=3){
-    const dl3 = raw.slice(14,35).map(r=>calcItem({...r,duct_no:'C'+r.duct_no,dl_no:3}));
-    result = result.concat(dl3);
-  }
-  return result;
+  // DL2 dataset
+  const dl2=[
+    {duct_no:'2A',duct_type:'Straight Collar',gauge:18,connector:'REV-TDF',A:3110,B:1220,C:3110,D:1220,E:0,ext1:0,ext2:0,final_length:382,qty:1,dl_no:2},
+    {duct_no:'1C',duct_type:'Closing Sheet',gauge:18,connector:'TDF',A:2500,B:1000,C:2500,D:1000,E:0,ext1:0,ext2:0,final_length:9,qty:1,dl_no:2},
+    {duct_no:'1B',duct_type:'Straight Duct',gauge:18,connector:'TDF',A:2500,B:1000,C:2500,D:1000,E:0,ext1:0,ext2:0,final_length:3367,qty:1,dl_no:2},
+    {duct_no:'1A',duct_type:'Small Duct',gauge:18,connector:'TDF',A:2500,B:1000,C:2500,D:1000,E:0,ext1:0,ext2:0,final_length:514,qty:1,dl_no:2},
+    {duct_no:'1',duct_type:'Straight Duct',gauge:18,connector:'TDF',A:2500,B:1000,C:2500,D:1000,E:0,ext1:0,ext2:0,final_length:1124,qty:28,dl_no:2},
+    {duct_no:'52',duct_type:'Small Duct',gauge:18,connector:'TDF',A:2500,B:1000,C:2500,D:1000,E:0,ext1:0,ext2:0,final_length:514,qty:1,dl_no:2},
+    {duct_no:'53',duct_type:'Straight Duct',gauge:18,connector:'TDF',A:2500,B:1000,C:2500,D:1000,E:0,ext1:0,ext2:0,final_length:1823,qty:1,dl_no:2},
+    {duct_no:'54',duct_type:'Straight Duct',gauge:18,connector:'TDF',A:2500,B:1000,C:2500,D:1000,E:0,ext1:0,ext2:0,final_length:1249,qty:1,dl_no:2},
+    {duct_no:'56',duct_type:'Taper (COT)',gauge:18,connector:'TDF',A:2500,B:1000,C:1500,D:1000,E:0,ext1:0,ext2:0,final_length:900,qty:1,dl_no:2},
+    {duct_no:'4',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:1500,B:1000,C:1500,D:1000,E:0,ext1:0,ext2:0,final_length:1154,qty:13,dl_no:2},
+    {duct_no:'57',duct_type:'Small Duct',gauge:22,connector:'TDF',A:1500,B:1000,C:1500,D:1000,E:0,ext1:0,ext2:0,final_length:598,qty:1,dl_no:2},
+    {duct_no:'58',duct_type:'Elbow',gauge:22,connector:'TDF',A:1000,B:1500,C:1000,D:1500,E:90,ext1:50,ext2:50,final_length:150,qty:1,dl_no:2},
+    {duct_no:'59',duct_type:'Small Duct',gauge:22,connector:'TDF',A:1500,B:1000,C:1500,D:1000,E:0,ext1:0,ext2:0,final_length:1046,qty:1,dl_no:2},
+    {duct_no:'4',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:1500,B:1000,C:1500,D:1000,E:0,ext1:0,ext2:0,final_length:1154,qty:1,dl_no:2},
+    {duct_no:'60',duct_type:'Elbow',gauge:22,connector:'TDF',A:1000,B:1500,C:1000,D:1500,E:90,ext1:50,ext2:50,final_length:150,qty:1,dl_no:2},
+    {duct_no:'61',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:1500,B:1000,C:1500,D:1000,E:0,ext1:0,ext2:0,final_length:1775,qty:1,dl_no:2},
+    {duct_no:'62',duct_type:'Closing Sheet',gauge:22,connector:'TDF',A:1500,B:1000,C:1500,D:1000,E:0,ext1:0,ext2:0,final_length:9,qty:1,dl_no:2},
+    {duct_no:'63',duct_type:'Shoe Piece',gauge:22,connector:'Rev. Flange- TDF',A:1225,B:800,C:1150,D:800,E:0,ext1:0,ext2:0,final_length:150,qty:1,dl_no:2},
+    {duct_no:'64',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:1150,B:800,C:1150,D:800,E:0,ext1:0,ext2:0,final_length:1154,qty:28,dl_no:2},
+    {duct_no:'65',duct_type:'Taper (FLAT-L)',gauge:22,connector:'TDF',A:1150,B:800,C:900,D:800,E:0,ext1:0,ext2:0,final_length:695,qty:1,dl_no:2},
+    {duct_no:'66',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:900,B:800,C:900,D:800,E:0,ext1:0,ext2:0,final_length:1154,qty:32,dl_no:2},
+    {duct_no:'67',duct_type:'Small Duct',gauge:22,connector:'TDF',A:900,B:800,C:900,D:800,E:0,ext1:0,ext2:0,final_length:529,qty:2,dl_no:2},
+    {duct_no:'67',duct_type:'Taper (FLAT-L)',gauge:22,connector:'TDF',A:900,B:800,C:800,D:650,E:0,ext1:0,ext2:0,final_length:473,qty:1,dl_no:2},
+    {duct_no:'68',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:800,B:650,C:800,D:650,E:0,ext1:0,ext2:0,final_length:1154,qty:26,dl_no:2},
+    {duct_no:'69',duct_type:'Small Duct',gauge:22,connector:'TDF',A:800,B:650,C:800,D:650,E:0,ext1:0,ext2:0,final_length:529,qty:2,dl_no:2},
+    {duct_no:'70',duct_type:'Taper (FLAT-L)',gauge:22,connector:'TDF',A:800,B:650,C:600,D:500,E:0,ext1:0,ext2:0,final_length:473,qty:1,dl_no:2},
+    {duct_no:'34',duct_type:'Straight Duct',gauge:24,connector:'TDF',A:600,B:500,C:600,D:500,E:0,ext1:0,ext2:0,final_length:1154,qty:19,dl_no:2},
+    {duct_no:'71',duct_type:'Small Duct',gauge:24,connector:'TDF',A:600,B:500,C:600,D:500,E:0,ext1:0,ext2:0,final_length:869,qty:1,dl_no:2},
+    {duct_no:'79',duct_type:'Straight Duct',gauge:24,connector:'TDF',A:700,B:600,C:700,D:600,E:0,ext1:0,ext2:0,final_length:1154,qty:13,dl_no:2},
+    {duct_no:'80',duct_type:'Small Duct',gauge:24,connector:'TDF',A:700,B:600,C:700,D:600,E:0,ext1:0,ext2:0,final_length:529,qty:1,dl_no:2},
+    {duct_no:'81',duct_type:'Taper (FLAT-R)',gauge:24,connector:'TDF',A:700,B:600,C:500,D:400,E:0,ext1:0,ext2:0,final_length:470,qty:1,dl_no:2},
+    {duct_no:'82',duct_type:'Straight Duct',gauge:24,connector:'TDF',A:500,B:400,C:500,D:400,E:0,ext1:0,ext2:0,final_length:1154,qty:12,dl_no:2},
+    {duct_no:'83',duct_type:'Straight Duct',gauge:24,connector:'TDF',A:500,B:400,C:500,D:400,E:0,ext1:0,ext2:0,final_length:1051,qty:1,dl_no:2},
+    {duct_no:'84',duct_type:'Closing Sheet',gauge:24,connector:'TDF',A:500,B:400,C:500,D:400,E:0,ext1:0,ext2:0,final_length:9,qty:1,dl_no:2},
+    {duct_no:'19',duct_type:'Shoe Piece',gauge:24,connector:'Rev. Flange- TDF',A:475,B:250,C:400,D:250,E:0,ext1:0,ext2:0,final_length:150,qty:16,dl_no:2},
+    {duct_no:'20',duct_type:'Elbow',gauge:24,connector:'TDF',A:250,B:400,C:250,D:400,E:90,ext1:50,ext2:50,final_length:150,qty:16,dl_no:2},
+  ];
+  // DL3 dataset
+  const dl3=[
+    {duct_no:'2A',duct_type:'Straight Collar',gauge:18,connector:'REV-TDF',A:3110,B:1220,C:3110,D:1220,E:0,ext1:0,ext2:0,final_length:382,qty:1,dl_no:3},
+    {duct_no:'1C',duct_type:'Closing Sheet',gauge:18,connector:'TDF',A:2500,B:1000,C:2500,D:1000,E:0,ext1:0,ext2:0,final_length:9,qty:1,dl_no:3},
+    {duct_no:'1B',duct_type:'Straight Duct',gauge:18,connector:'TDF',A:2500,B:1000,C:2500,D:1000,E:0,ext1:0,ext2:0,final_length:3367,qty:1,dl_no:3},
+    {duct_no:'1A',duct_type:'Small Duct',gauge:18,connector:'TDF',A:2500,B:1000,C:2500,D:1000,E:0,ext1:0,ext2:0,final_length:514,qty:1,dl_no:3},
+    {duct_no:'1',duct_type:'Straight Duct',gauge:18,connector:'TDF',A:2500,B:1000,C:2500,D:1000,E:0,ext1:0,ext2:0,final_length:1124,qty:2,dl_no:3},
+    {duct_no:'101',duct_type:'Straight Duct',gauge:18,connector:'TDF',A:2500,B:1000,C:2500,D:1000,E:0,ext1:0,ext2:0,final_length:1626,qty:1,dl_no:3},
+    {duct_no:'102',duct_type:'Straight Duct',gauge:18,connector:'TDF',A:2500,B:1000,C:2500,D:1000,E:0,ext1:0,ext2:0,final_length:1325,qty:1,dl_no:3},
+    {duct_no:'103',duct_type:'Taper (COT)',gauge:18,connector:'TDF',A:2500,B:1000,C:1100,D:1000,E:0,ext1:0,ext2:0,final_length:900,qty:1,dl_no:3},
+    {duct_no:'104',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:1100,B:1000,C:1100,D:1000,E:0,ext1:0,ext2:0,final_length:1154,qty:20,dl_no:3},
+    {duct_no:'105',duct_type:'Small Duct',gauge:22,connector:'TDF',A:1100,B:1000,C:1100,D:1000,E:0,ext1:0,ext2:0,final_length:463,qty:1,dl_no:3},
+    {duct_no:'106',duct_type:'Elbow',gauge:22,connector:'TDF',A:1000,B:1100,C:1000,D:1100,E:90,ext1:50,ext2:50,final_length:150,qty:1,dl_no:3},
+    {duct_no:'107',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:1100,B:1000,C:1100,D:1000,E:0,ext1:0,ext2:0,final_length:1046,qty:1,dl_no:3},
+    {duct_no:'108',duct_type:'Elbow',gauge:22,connector:'TDF',A:1000,B:1100,C:1000,D:1100,E:90,ext1:50,ext2:50,final_length:150,qty:1,dl_no:3},
+    {duct_no:'109',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:1100,B:1000,C:1100,D:1000,E:0,ext1:0,ext2:0,final_length:1775,qty:1,dl_no:3},
+    {duct_no:'110',duct_type:'Closing Sheet',gauge:22,connector:'TDF',A:1100,B:1000,C:1100,D:1000,E:0,ext1:0,ext2:0,final_length:9,qty:1,dl_no:3},
+    {duct_no:'111',duct_type:'Shoe Piece',gauge:22,connector:'Rev. Flange- TDF',A:1175,B:800,C:1100,D:800,E:0,ext1:0,ext2:0,final_length:150,qty:3,dl_no:3},
+    {duct_no:'26',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:1100,B:800,C:1100,D:800,E:0,ext1:0,ext2:0,final_length:1154,qty:25,dl_no:3},
+    {duct_no:'112',duct_type:'Small Duct',gauge:22,connector:'TDF',A:1100,B:800,C:1100,D:800,E:0,ext1:0,ext2:0,final_length:1118,qty:1,dl_no:3},
+    {duct_no:'113',duct_type:'Taper (FLAT-R)',gauge:22,connector:'TDF',A:1100,B:800,C:850,D:750,E:0,ext1:0,ext2:0,final_length:850,qty:1,dl_no:3},
+    {duct_no:'124',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:850,B:750,C:850,D:750,E:0,ext1:0,ext2:0,final_length:1154,qty:25,dl_no:3},
+    {duct_no:'114',duct_type:'Small Duct',gauge:22,connector:'TDF',A:850,B:750,C:850,D:750,E:0,ext1:0,ext2:0,final_length:529,qty:1,dl_no:3},
+    {duct_no:'116',duct_type:'Taper (COT)',gauge:22,connector:'TDF',A:850,B:750,C:850,D:600,E:0,ext1:0,ext2:0,final_length:449,qty:1,dl_no:3},
+    {duct_no:'31',duct_type:'Straight Duct',gauge:22,connector:'TDF',A:850,B:600,C:850,D:600,E:0,ext1:0,ext2:0,final_length:1154,qty:25,dl_no:3},
+    {duct_no:'136',duct_type:'Small Duct',gauge:22,connector:'TDF',A:850,B:600,C:850,D:600,E:0,ext1:0,ext2:0,final_length:529,qty:2,dl_no:3},
+    {duct_no:'118',duct_type:'Taper (FLAT-R)',gauge:22,connector:'TDF',A:850,B:600,C:600,D:500,E:0,ext1:0,ext2:0,final_length:450,qty:1,dl_no:3},
+    {duct_no:'34',duct_type:'Straight Duct',gauge:24,connector:'TDF',A:600,B:500,C:600,D:500,E:0,ext1:0,ext2:0,final_length:1154,qty:19,dl_no:3},
+    {duct_no:'119',duct_type:'Small Duct',gauge:24,connector:'TDF',A:600,B:500,C:650,D:500,E:0,ext1:0,ext2:0,final_length:1019,qty:1,dl_no:3},
+    {duct_no:'130',duct_type:'Straight Duct',gauge:24,connector:'TDF',A:450,B:400,C:450,D:400,E:0,ext1:0,ext2:0,final_length:1154,qty:12,dl_no:3},
+    {duct_no:'131',duct_type:'Straight Duct',gauge:24,connector:'TDF',A:450,B:400,C:450,D:400,E:0,ext1:0,ext2:0,final_length:1404,qty:1,dl_no:3},
+    {duct_no:'132',duct_type:'Closing Sheet',gauge:24,connector:'TDF',A:450,B:400,C:450,D:400,E:0,ext1:0,ext2:0,final_length:9,qty:1,dl_no:3},
+    {duct_no:'19',duct_type:'Shoe Piece',gauge:24,connector:'Rev. Flange- TDF',A:475,B:250,C:400,D:250,E:0,ext1:0,ext2:0,final_length:150,qty:8,dl_no:3},
+    {duct_no:'20',duct_type:'Elbow',gauge:24,connector:'TDF',A:250,B:400,C:250,D:400,E:90,ext1:50,ext2:50,final_length:150,qty:8,dl_no:3},
+  ];
+  let raw=dl1;
+  if(numDL>=2) raw=raw.concat(dl2);
+  if(numDL>=3) raw=raw.concat(dl3);
+  return raw.map(calcItem);
 }
 
 // ─── EXPORT ───────────────────────────────────────────────────────────────────
@@ -788,12 +883,12 @@ function expCSV(type){
       csv+=`${r.duct_no},"${r.duct_type}",${r.ext1},${r.ext2},${r.gauge},${r.connector},${r.A},${r.B},${r.C},${r.D},${r.E},${r.final_length},${r.qty},${f6(r.area_sqft)},${r.dl_no},${f6(r.bucket_0_750)},${f6(r.bucket_751_1500)},${f6(r.bucket_1501_2100)},${r.perimeter},${f6(r.sqft)},${r.bend_length||0},${f6(r.taper_sqft)},${f6(r.dead_end_main)},${f6(r.dead_end_small)},${f6(r.rev_flange_sqft)},${r.tdf_side_a},${r.tdf_side_b},${r.tdf_total_mm},${r.tdf_count},${r.corners},${r.clips_total},${f6(r.gasket_mtr)},${f6(r.gasket_mtr2)},${r.corner_a},${r.clip_a},${r.corner_b},${r.clip_b}\n`;
     });
   } else if(type==='psheet'){
-    csv='Duct No,Duct Type,Gauge,Connector,A,B,C,D,E,Final Length,Qty,Area Sq.Ft,DL No,Perimeter,TDF Count,Corners,Clips,Gasket Mtr\n';
+    csv='Duct No,Duct Type,Gauge,Connector,A,B,C,D,E,Final Length,Qty,Area Sq.Ft,DL No,Perimeter,TDF Count,Corners,Clips,Gasket Mtr,Gasket Mtr2,Corner A,Clip A,Corner B,Clip B\n';
     const groups={};
     items.forEach(i=>(groups[i.duct_type]=groups[i.duct_type]||[]).push(i));
     Object.entries(groups).forEach(([t,rows])=>{
       csv+=`\n"--- ${t} ---"\n`;
-      rows.forEach(r=>{csv+=`${r.duct_no},"${r.duct_type}",${r.gauge}G,${r.connector},${r.A},${r.B},${r.C},${r.D},${r.E},${r.final_length},${r.qty},${f6(r.area_sqft)},${r.dl_no},${r.perimeter},${r.tdf_count},${r.corners},${r.clips_total},${f6(r.gasket_mtr)}\n`;});
+      rows.forEach(r=>{csv+=`${r.duct_no},"${r.duct_type}",${r.gauge}G,${r.connector},${r.A},${r.B},${r.C},${r.D},${r.E},${r.final_length},${r.qty},${f6(r.area_sqft)},${r.dl_no},${r.perimeter},${r.tdf_count},${r.corners},${r.clips_total},${f2(r.gasket_mtr)},${f2(r.gasket_mtr2)},${r.corner_a},${r.clip_a},${r.corner_b},${r.clip_b}\n`;});
     });
   } else if(type==='bom'){
     const GW={'18G':0.584,'22G':0.584,'24G':0.438,'20G':0.584};
