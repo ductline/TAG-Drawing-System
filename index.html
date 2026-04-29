@@ -296,130 +296,142 @@ const PASS      = 'Ductline1$';
 const SK        = 'dl_auth';
 const PROXY_URL = 'https://dm.nagredy.workers.dev';
 
-// ─── FORMULA ENGINE (matches JSW Excel exactly) ───────────────────────────────
-const FT2 = 304.8 * 304.8; // sq mm per sq ft
+// ─── EXACT JSW FORMULA ENGINE ────────────────────────────────────────────────
+const FT2 = 304.8 * 304.8;
 
-function calcPerimeter(A,B,C,D,type){
-  // For tapers: average of inlet and outlet perimeters
-  if(type.includes('Taper')) return (A+B+C+D); // (A+B) + (C+D)
-  if(type==='Shoe Piece') return (A+B+C+D);    // inlet + outlet faces
-  if(type==='Elbow') return (A+B)*2;
-  return (A+B)*2; // straight
+// Perimeter: tapers/shoe use A+B+C+D; others use (A+B)*2
+function _perim(A,B,C,D,type){
+  return (type.includes('Taper')||type==='Shoe Piece') ? A+B+C+D : (A+B)*2;
 }
 
-function calcAreaSqFt(A,B,C,D,L,qty,type){
-  const perim = calcPerimeter(A,B,C,D,type);
-  return perim * L * qty / FT2;
+// Area sq.ft formulas — exact per JSW Excel
+// Elbow: area = perim * (A*pi/4 + ext1 + ext2 + L*pi/2) * qty / FT2
+// Closing Sheet: area = (perim*L + A*B) * qty / FT2  (face area + seam)
+// All others: area = perim * L * qty / FT2
+function _bendLen(ext1,ext2,A,L){ return A*Math.PI/4 + ext1 + ext2 + L*Math.PI/2; }
+function _area(A,B,C,D,L,qty,type,ext1,ext2){
+  if(type==='Elbow'){
+    const p=(A+B)*2;
+    return p * _bendLen(ext1||50,ext2||50,A,L) * qty / FT2;
+  }
+  if(type==='Closing Sheet'){
+    return ((A+B)*2*L + A*B) * qty / FT2;
+  }
+  return _perim(A,B,C,D,type) * L * qty / FT2;
 }
 
-function lengthBucket(area, L){
-  if(L<=750)  return {b0:area,b1:0,b2:0};
-  if(L<=1500) return {b0:0,b1:area,b2:0};
-  return {b0:0,b1:0,b2:area};
+// Length bucket: gauge-based (18G→ball, 22G→b1, 24G→b0)
+function _bucket(area, gauge){
+  if(gauge===18) return {b0:0,b1:0,b2:0,ball:area};
+  if(gauge===24) return {b0:area,b1:0,b2:0,ball:0};
+  return {b0:0,b1:area,b2:0,ball:0}; // 22G
 }
 
-function calcBendLength(A,B,ext1,ext2,E){
-  if(E===0) return 0;
-  // Bend length = (inner_radius + outer_radius) * PI/2
-  const r_inner = ext1 || 50;
-  const r_outer = ext2 || (r_inner + Math.max(A,B));
-  return Math.round((r_inner + r_outer) * Math.PI / 2);
+// Bend length for elbow: A*pi/4 + ext1 + ext2 + L*pi/2
+function _bend(ext1,ext2,A,L){ return Math.round(A*Math.PI/4 + ext1 + ext2 + L*Math.PI/2); }
+
+// Taper sqft (same as area for tapers)
+function _taper(A,B,C,D,L){ return _perim(A,B,C,D,'Taper')*L/FT2; }
+
+// Dead end sqft (closing sheet)
+function _dead(A,B,L,qty){
+  const p=(A+B)*2; const face=A*B/FT2;
+  // main = face area minus the small seam = A*(B-9)/FT2 * qty, small = A*9/FT2 * qty
+  const main = A*(B)*qty/FT2 * (1 - 9/B);
+  const small = A*B*qty/FT2 * 9/B;
+  return {main, small};
 }
 
-function calcTaperSqFt(A,B,C,D,L){
-  // avg perimeter * length
-  const p_in  = (A+B)*2;
-  const p_out = (C+D)*2;
-  const avg_p = (p_in + p_out) / 2;
-  return avg_p * L / FT2;
+// Rev flange sqft (shoe piece)
+function _revfl(A,B,C,D,L){ return (A+B+C+D)*L/FT2; }
+
+// TDF flange — exact float (no rounding) per JSW
+function _tdf(A,B,C,D,qty,type){
+  if(type==='Closing Sheet'||type==='Straight Collar'){
+    return {sideA:0,sideB:0,totalMm:0,count:0};
+  }
+  if(type==='Shoe Piece'){
+    const sB=C+D; return {sideA:0,sideB:sB,totalMm:sB,count:sB/500*qty};
+  }
+  const sA=A+B, sB=C+D, tot=sA+sB;
+  return {sideA:sA, sideB:sB, totalMm:tot, count:tot/500*qty};
 }
 
-function calcDeadEnd(A,B){
-  // Dead end = face area in sq.ft
-  const face = A * B / FT2;
-  const small = face * 0.025; // nominal small component
-  return { main: face - small, small: small };
-}
+// Gasket
+function _gas(tdf_total,qty){ return {mtr:tdf_total*qty/300, mtr2:tdf_total*qty/9200}; }
 
-function calcRevFlangeSqFt(A,B,C,D,L){
-  // Shoe piece area calculation
-  const p = (A+B+C+D);
-  return p * L / FT2;
+// Clips per side — A-dim (tall, every 350mm) and B-dim (wide, every 500mm)
+function _cA(d){ // A/height dimension
+  if(d>=2200) return 8;
+  if(d>=1400) return 5;
+  if(d>=1050) return 4;
+  if(d>=700)  return 3;
+  if(d>=350)  return 2;
+  return 1;
 }
-
-function calcTDF(A,B,C,D,qty,type){
-  const sideA = A+B;
-  const sideB = C+D;
-  const totalMm = sideA + sideB;
-  const count = Math.round((totalMm / 500) * qty);
-  return { sideA, sideB, totalMm, count };
-}
-
-function calcGasket(perim, qty){
-  const mtr  = perim * qty / 300;
-  const mtr2 = perim * qty / 9200;
-  return { mtr, mtr2 };
-}
-
-// Clips per side lookup (exact from JSW Excel)
-function clipsForDim(dim){
-  if(dim>=2200) return 8;
-  if(dim>=1400) return 5;
-  if(dim>=1050) return 4;
-  if(dim>=700)  return 3;
-  if(dim>=350)  return 2;
+function _clA(d){ // B/width dimension
+  if(d>=1400) return 5;
+  if(d>=1050) return 4;
+  if(d>=750)  return 3;
+  if(d>=500)  return 2;
   return 1;
 }
 
-function calcHardware(A,B,C,D,qty,type){
-  const isShoe = type==='Shoe Piece' || type==='Straight Collar';
-  const corners = isShoe ? 4 : 8;
-  const clips   = corners * qty;
-  const cA = isShoe ? 0 : clipsForDim(Math.max(A,C));
-  const clA= clipsForDim(Math.max(B,D));
-  const cB = isShoe ? 0 : clipsForDim(Math.max(A,C));
-  const clB= clipsForDim(Math.max(B,D));
-  return { corners, clips, cA, clA, cB, clB };
+// Hardware — corners and clips (exact per JSW Excel)
+function _hw(A,B,C,D,qty,type){
+  if(type==='Closing Sheet'||type==='Straight Collar'){
+    return {corners:0,clips:0,cA:0,clA:0,cB:0,clB:0};
+  }
+  if(type==='Shoe Piece'){
+    const cl=_clA(Math.max(B,D));
+    return {corners:4,clips:4*qty,cA:0,clA:cl,cB:0,clB:cl};
+  }
+  const corners=8, clips=8*qty;
+  const cA=_cA(Math.max(A,C)), clA=_clA(Math.max(B,D));
+  return {corners,clips,cA,clA,cB:cA,clB:clA};
 }
 
-// ─── CALCULATE ALL FIELDS FOR ONE ITEM ───────────────────────────────────────
+// MAIN CALC FUNCTION — assembles all fields
 function calcItem(r){
-  const {duct_no,duct_type,gauge,connector,A,B,C,D,E,final_length,qty,dl_no,ext1,ext2} = r;
-  const type = duct_type;
-  const perim = calcPerimeter(A,B,C,D,type);
-  const area  = calcAreaSqFt(A,B,C,D,final_length,qty,type);
-  const bkt   = lengthBucket(area, final_length);
-  const tdf   = calcTDF(A,B,C,D,qty,type);
-  const gas   = calcGasket(tdf.totalMm, qty);
-  const hw    = calcHardware(A,B,C,D,qty,type);
+  const {duct_no,duct_type,gauge,connector,A,B,E,final_length,qty,dl_no} = r;
+  const C=r.C||r.A; const D=r.D||r.B;
+  const ext1=r.ext1||0; const ext2=r.ext2||0;
+  const type=duct_type;
 
-  const bendLen  = type==='Elbow' ? calcBendLength(A,B,ext1,ext2,E) : 0;
-  const taperSqFt= type.includes('Taper') ? calcTaperSqFt(A,B,C,D,final_length) : 0;
-  const deadEnd  = type==='Closing Sheet' ? calcDeadEnd(A,B) : {main:0,small:0};
-  const revFlange= type==='Shoe Piece'    ? calcRevFlangeSqFt(A,B,C,D,final_length) : 0;
+  const perim  = _perim(A,B,C,D,type);
+  const area   = _area(A,B,C,D,final_length,qty,type,ext1,ext2);
+  const bkt    = _bucket(area,gauge);
+  const tdf    = _tdf(A,B,C,D,qty,type);
+  const gas    = _gas(tdf.totalMm,qty);
+  const hw     = _hw(A,B,C,D,qty,type);
+
+  const bendLen   = type==='Elbow' ? _bend(ext1,ext2,A,final_length) : 0;
+  const taperSqFt = type.includes('Taper') ? _taper(A,B,C,D,final_length) : 0;
+  const dead      = type==='Closing Sheet' ? _dead(A,B,final_length,qty) : {main:0,small:0};
+  const revFl     = type==='Shoe Piece'    ? _revfl(A,B,C,D,final_length) : 0;
 
   return {
-    duct_no, duct_type, ext1:ext1||0, ext2:ext2||0, gauge, connector,
-    A, B, C:C||A, D:D||B, E:E||0,
-    final_length, qty, area_sqft:+area.toFixed(6), dl_no,
-    bucket_0_750: +bkt.b0.toFixed(6),
+    duct_no, duct_type, ext1, ext2, gauge, connector,
+    A, B, C, D, E:E||0, final_length, qty,
+    area_sqft: +area.toFixed(6), dl_no,
+    bucket_0_750:    +bkt.b0.toFixed(6),
     bucket_751_1500: +bkt.b1.toFixed(6),
-    bucket_1501_2100: +bkt.b2.toFixed(6),
-    perimeter: perim,
-    sqft: +area.toFixed(6),
+    bucket_1501_2100:+bkt.b2.toFixed(6),
+    bucket_all:      +bkt.ball.toFixed(6),
+    perimeter: perim, sqft: +area.toFixed(6),
     bend_length: bendLen,
     taper_sqft: +taperSqFt.toFixed(6),
     taper_sqft2: +taperSqFt.toFixed(6),
-    dead_end_main: +(deadEnd.main).toFixed(6),
-    dead_end_small: +(deadEnd.small).toFixed(6),
-    rev_flange_sqft: +revFlange.toFixed(6),
-    tdf_side_a: tdf.sideA,
-    tdf_side_b: tdf.sideB,
-    tdf_total_mm: tdf.totalMm,
-    tdf_count: tdf.count,
-    corners: hw.corners,
+    dead_end_main:  +dead.main.toFixed(6),
+    dead_end_small: +dead.small.toFixed(6),
+    rev_flange_sqft: +revFl.toFixed(6),
+    tdf_side_a:  tdf.sideA,
+    tdf_side_b:  tdf.sideB,
+    tdf_total_mm:tdf.totalMm,
+    tdf_count:   +tdf.count.toFixed(4),
+    corners:     hw.corners,
     clips_total: hw.clips,
-    gasket_mtr: +gas.mtr.toFixed(6),
+    gasket_mtr:  +gas.mtr.toFixed(6),
     gasket_mtr2: +gas.mtr2.toFixed(6),
     corner_a: hw.cA, clip_a: hw.clA,
     corner_b: hw.cB, clip_b: hw.clB
@@ -878,9 +890,9 @@ function expCSV(type){
   let csv='',fn=`Ductline_${type}_${gData.job||'PROJECT'}_${Date.now()}.csv`;
 
   if(type==='part1'){
-    csv='Duct No,Duct Type,Ext1,Ext2,Gauge,Connector Type,A,B,C,D,E,Final Length,Qty,Area (Sq.Ft),DL No,0-750,751-1500,1501-2100,Perimeter,Sq.Ft,Bend Length,Taper Sq.Ft,Dead End Main,Dead End Small,Rev Flange Sq.Ft,TDF Side A,TDF Side B,TDF Total mm,TDF Count,Corners,Clips Total,Gasket Mtr,Gasket Mtr2,Corner A,Clip A,Corner B,Clip B\n';
+    csv='Duct No,Duct Type,Ext1,Ext2,Gauge,Connector Type,A,B,C,D,E,Final Length,Qty,Area (Sq.Ft),DL No,0-750,751-1500,1501-2100,1501+,Perimeter,Sq.Ft,Bend Length,Taper Sq.Ft,Dead End Main,Dead End Small,Rev Flange Sq.Ft,TDF Side A,TDF Side B,TDF Total mm,TDF Count,Corners,Clips Total,Gasket Mtr,Gasket Mtr2,Corner A,Clip A,Corner B,Clip B\n';
     items.forEach(r=>{
-      csv+=`${r.duct_no},"${r.duct_type}",${r.ext1},${r.ext2},${r.gauge},${r.connector},${r.A},${r.B},${r.C},${r.D},${r.E},${r.final_length},${r.qty},${f6(r.area_sqft)},${r.dl_no},${f6(r.bucket_0_750)},${f6(r.bucket_751_1500)},${f6(r.bucket_1501_2100)},${r.perimeter},${f6(r.sqft)},${r.bend_length||0},${f6(r.taper_sqft)},${f6(r.dead_end_main)},${f6(r.dead_end_small)},${f6(r.rev_flange_sqft)},${r.tdf_side_a},${r.tdf_side_b},${r.tdf_total_mm},${r.tdf_count},${r.corners},${r.clips_total},${f6(r.gasket_mtr)},${f6(r.gasket_mtr2)},${r.corner_a},${r.clip_a},${r.corner_b},${r.clip_b}\n`;
+      csv+=`${r.duct_no},"${r.duct_type}",${r.ext1},${r.ext2},${r.gauge},${r.connector},${r.A},${r.B},${r.C},${r.D},${r.E},${r.final_length},${r.qty},${f6(r.area_sqft)},${r.dl_no},${f6(r.bucket_0_750)},${f6(r.bucket_751_1500)},${f6(r.bucket_1501_2100)},${f6(r.bucket_all||0)},${r.perimeter},${f6(r.sqft)},${r.bend_length||0},${f6(r.taper_sqft)},${f6(r.dead_end_main)},${f6(r.dead_end_small)},${f6(r.rev_flange_sqft)},${r.tdf_side_a},${r.tdf_side_b},${r.tdf_total_mm},${f2(r.tdf_count)},${r.corners},${r.clips_total},${f2(r.gasket_mtr)},${f6(r.gasket_mtr2)},${r.corner_a},${r.clip_a},${r.corner_b},${r.clip_b}\n`;
     });
   } else if(type==='psheet'){
     csv='Duct No,Duct Type,Gauge,Connector,A,B,C,D,E,Final Length,Qty,Area Sq.Ft,DL No,Perimeter,TDF Count,Corners,Clips,Gasket Mtr,Gasket Mtr2,Corner A,Clip A,Corner B,Clip B\n';
