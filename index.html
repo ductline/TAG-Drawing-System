@@ -555,13 +555,13 @@ function parseDXF(text) {
       if (val==='TEXT'||val==='MTEXT'||val==='ATTRIB'||val==='ATTDEF') {
         cur={etype:'text',text:'',layer:'',x:0,y:0}; ctype='text';
       } else if (val==='LINE') {
-        cur={etype:'LINE',layer:'',x1:0,y1:0,x2:0,y2:0}; ctype='line';
+        cur={etype:'line',layer:'',x1:0,y1:0,x2:0,y2:0}; ctype='line';
       } else { cur=null; ctype=null; }
-    } else if (cur) {
+    } else if (cur && ctype==='text') {
       if (code==='8') cur.layer=val;
+      if (code==='1') cur.text=val;
+      if (code==='3') cur.text+=val;
       if (ctype==='text') {
-        if (code==='1') cur.text=val;
-        if (code==='3') cur.text+=val;
         if (code==='10') cur.x=parseFloat(val)||0;
         if (code==='20') cur.y=parseFloat(val)||0;
       } else if (ctype==='line') {
@@ -587,221 +587,210 @@ function cleanMText(t) {
 function extractDuctScheduleFromDXF(entities) {
   var dimRe = /(\d{3,4})[xX*](\d{3,4})/;
   var bodRe = /BOD[:\s]*([\d.]+)m/i;
+  var STD_L = {18:1124, 22:1154, 24:1154};
+  var SMALL_L = {18:514, 22:529, 24:529};
 
-  // ── Find duct size annotation layer (most NNNNxNNNN labels) ─────────────
+  // ── Imperial → mm ────────────────────────────────────────────────────────
+  function parseImperial(text) {
+    var m = text.match(/(\d+\.?\d*)[Ww"']?\s*[xX]\s*(\d+\.?\d*)[Hh"']?/);
+    if (!m) return null;
+    var a=parseFloat(m[1]),b=parseFloat(m[2]);
+    if (a<3||b<3||a>200||b>200) return null;
+    var Amm=Math.round(a*25.4/25)*25, Bmm=Math.round(b*25.4/5)*5;
+    if(Amm<Bmm){var t=Amm;Amm=Bmm;Bmm=t;}
+    return {A:Amm,B:Bmm};
+  }
+
+  // ── Collect size labels (metric + imperial) ───────────────────────────────
   var sizeScore={}, sizeByLayer={};
   entities.forEach(function(e){
-    if(e.etype!=='text') return;
-    var t=cleanMText(e.text), m=dimRe.exec(t);
-    if(!m) return;
-    var A=parseInt(m[1]),B=parseInt(m[2]);
-    if(A<200||B<100||A>3500||B>2000||A<B) return;
-    // Skip grilles/diffusers — these are not fabricated duct pieces
-    if(t.indexOf('TYP')>=0 || t.indexOf('GRILLE')>=0 || t.indexOf('CMH')>=0&&A<=800&&B<=400) return;
-    sizeScore[e.layer]=(sizeScore[e.layer]||0)+1;
-    if(!sizeByLayer[e.layer]) sizeByLayer[e.layer]=[];
-    var bod=bodRe.exec(t);
-    sizeByLayer[e.layer].push({A:A,B:B,x:e.x,y:e.y,
-      bod:bod?parseFloat(bod[1]):0, text:t});
+    var t=cleanMText(e.text);
+    // Metric
+    var m=dimRe.exec(t);
+    if(m){
+      var A=parseInt(m[1]),B=parseInt(m[2]);
+      if(A>=200&&B>=100&&A<=3500&&B<=2000&&A>=B&&t.indexOf('TYP')<0){
+        var bod=bodRe.exec(t); bod=bod?parseFloat(bod[1]):0;
+        sizeScore[e.layer]=(sizeScore[e.layer]||0)+1;
+        if(!sizeByLayer[e.layer])sizeByLayer[e.layer]=[];
+        sizeByLayer[e.layer].push({A:A,B:B,x:e.x,y:e.y,bod:bod,text:t});
+        return;
+      }
+    }
+    // Imperial
+    if(/SAD|EAD|DUCT|FRESH|EXHAUST|SUPPLY|RETURN/i.test(t)||/\d+"\s*[Xx]\s*\d+"/.test(t)){
+      var imp=parseImperial(t);
+      if(imp&&imp.A>=100&&imp.B>=50){
+        sizeScore[e.layer]=(sizeScore[e.layer]||0)+1;
+        if(!sizeByLayer[e.layer])sizeByLayer[e.layer]=[];
+        sizeByLayer[e.layer].push({A:imp.A,B:imp.B,x:e.x,y:e.y,bod:0,text:t,imperial:true});
+      }
+    }
   });
-  var sizeLayer=Object.keys(sizeScore).sort(function(a,b){
-    return sizeScore[b]-sizeScore[a];
-  })[0];
-  var sizeEnts = sizeLayer ? sizeByLayer[sizeLayer] : [];
+  var sizeLayer=Object.keys(sizeScore).sort(function(a,b){return sizeScore[b]-sizeScore[a];})[0];
+  var sizeEnts=sizeLayer?sizeByLayer[sizeLayer]:[];
 
-  // ── Find duct LINE layer (most lines 300-10000mm) ────────────────────────
-  var lineScore={}, linesByLayer={};
-  entities.forEach(function(e){
-    if(e.etype!=='LINE') return;
-    var len=Math.sqrt(Math.pow(e.x2-e.x1,2)+Math.pow(e.y2-e.y1,2));
-    if(len<300||len>20000) return;
-    lineScore[e.layer]=(lineScore[e.layer]||0)+1;
-    if(!linesByLayer[e.layer]) linesByLayer[e.layer]=[];
-    linesByLayer[e.layer].push({len:len,
-      mx:(e.x1+e.x2)/2, my:(e.y1+e.y2)/2,
-      ax:e.x1,ay:e.y1, bx:e.x2, by:e.y2});
-  });
-  var lineLayer=Object.keys(lineScore).sort(function(a,b){
-    return lineScore[b]-lineScore[a];
-  })[0];
-  var ductLines = lineLayer ? linesByLayer[lineLayer] : [];
-
-  if(sizeEnts.length===0) {
+  if(!sizeEnts.length){
     return {items:[],tagCount:0,sizeCount:0,bestLayer:'none',
-      error:'No duct size labels found in DXF'};
+      error:'No duct size labels found. Check DXF layer names.'};
   }
 
-  // ── Helper: nearest size label for a point ───────────────────────────────
-  function nearestSize(x,y) {
-    return sizeEnts.reduce(function(best,s){
-      var d=(s.x-x)*(s.x-x)+(s.y-y)*(s.y-y);
-      return d<best.d?{d:d,s:s}:best;
-    },{d:Infinity,s:null}).s;
+  // ── Find duct line layer (most lines 100–50000mm) ─────────────────────────
+  var linesByLayer={}, lineScore={};
+  entities.forEach(function(e){
+    if(e.etype!=='line') return;
+    var len=Math.sqrt(Math.pow(e.x2-e.x1,2)+Math.pow(e.y2-e.y1,2));
+    if(len<100||len>50000) return;
+    lineScore[e.layer]=(lineScore[e.layer]||0)+1;
+    if(!linesByLayer[e.layer])linesByLayer[e.layer]=[];
+    linesByLayer[e.layer].push({len:len,
+      mx:(e.x1+e.x2)/2,my:(e.y1+e.y2)/2,
+      ax:e.x1,ay:e.y1,bx:e.x2,by:e.y2});
+  });
+  var lineLayer=Object.keys(lineScore).sort(function(a,b){return lineScore[b]-lineScore[a];})[0];
+  var ductLines=lineLayer?linesByLayer[lineLayer]:[];
+
+  // ── Assign each duct line to nearest size label ───────────────────────────
+  function nearestSize(mx,my){
+    var best=null,bd=Infinity;
+    sizeEnts.forEach(function(s){
+      var d=(s.x-mx)*(s.x-mx)+(s.y-my)*(s.y-my);
+      if(d<bd){bd=d;best=s;}
+    });
+    return best;
   }
 
-  // ── Group duct lines by size+BOD ─────────────────────────────────────────
-  var sizeGroups = {}; // key: "AxB_bod" → {A,B,bod,totalLen,lineCount,elbows}
-  var TOL = 80; // endpoint connection tolerance mm
+  // ── Accumulate total length per size ─────────────────────────────────────
+  var sizeData={};
+  ductLines.forEach(function(line){
+    var s=nearestSize(line.mx,line.my);
+    if(!s) return;
+    var key=s.A+'x'+s.B;
+    if(!sizeData[key]) sizeData[key]={A:s.A,B:s.B,bod:s.bod,total_mm:0,elbows:0};
+    sizeData[key].total_mm+=line.len;
+  });
 
-  // For elbow detection: find line pairs sharing an endpoint at an angle
-  var elbowCount = {}; // key: "AxB_bod" → count
+  // If no line geometry, fall back to counting size labels
+  if(!ductLines.length){
+    var labelCount={};
+    sizeEnts.forEach(function(s){
+      var key=s.A+'x'+s.B;
+      if(!labelCount[key]) labelCount[key]={A:s.A,B:s.B,bod:s.bod,count:0};
+      labelCount[key].count++;
+    });
+    Object.keys(labelCount).forEach(function(key){
+      var d=labelCount[key];
+      var perim=(d.A+d.B)*2;
+      var g=perim>=7000?18:perim>=2500?22:24;
+      sizeData[key]={A:d.A,B:d.B,bod:d.bod,
+        total_mm:d.count*STD_L[g]*3, elbows:0};
+    });
+  }
 
-  if(ductLines.length > 0) {
-    // Find connected line pairs and detect elbows
-    for(var i=0;i<ductLines.length;i++){
-      var li=ductLines[i];
-      var si=nearestSize(li.mx,li.my);
-      if(!si) continue;
-      var ki=si.A+'x'+si.B+'_'+si.bod;
-      if(!sizeGroups[ki]) sizeGroups[ki]={A:si.A,B:si.B,bod:si.bod,totalLen:0,lineCount:0};
-      sizeGroups[ki].totalLen+=li.len;
-      sizeGroups[ki].lineCount++;
+  // ── Sort sizes by perimeter descending ────────────────────────────────────
+  var sortedKeys=Object.keys(sizeData).sort(function(a,b){
+    var pa=(sizeData[a].A+sizeData[a].B)*2;
+    var pb=(sizeData[b].A+sizeData[b].B)*2;
+    return pb-pa;
+  });
 
-      for(var j=i+1;j<ductLines.length;j++){
-        var lj=ductLines[j];
-        // Check shared endpoint
-        var shared = (
-          (Math.abs(li.ax-lj.ax)<TOL&&Math.abs(li.ay-lj.ay)<TOL)||
-          (Math.abs(li.ax-lj.bx)<TOL&&Math.abs(li.ay-lj.by)<TOL)||
-          (Math.abs(li.bx-lj.ax)<TOL&&Math.abs(li.by-lj.ay)<TOL)||
-          (Math.abs(li.bx-lj.bx)<TOL&&Math.abs(li.by-lj.by)<TOL)
-        );
+  // ── Detect elbows per size from line angle changes ────────────────────────
+  // Lines of same size that share an endpoint and meet at ~90° = elbow
+  var TOL=200;
+  sortedKeys.forEach(function(key){
+    var segs=ductLines.filter(function(l){
+      var s=nearestSize(l.mx,l.my);
+      return s&&s.A+'x'+s.B===key;
+    });
+    var count=0;
+    for(var i=0;i<segs.length;i++){
+      for(var j=i+1;j<segs.length;j++){
+        var li=segs[i],lj=segs[j];
+        var shared=(Math.abs(li.ax-lj.ax)<TOL&&Math.abs(li.ay-lj.ay)<TOL)||
+                   (Math.abs(li.ax-lj.bx)<TOL&&Math.abs(li.ay-lj.by)<TOL)||
+                   (Math.abs(li.bx-lj.ax)<TOL&&Math.abs(li.by-lj.ay)<TOL)||
+                   (Math.abs(li.bx-lj.bx)<TOL&&Math.abs(li.by-lj.by)<TOL);
         if(!shared) continue;
-        // Angle between lines
         var ai=Math.atan2(li.by-li.ay,li.bx-li.ax);
         var aj=Math.atan2(lj.by-lj.ay,lj.bx-lj.ax);
         var diff=Math.abs(ai-aj)*180/Math.PI;
         if(diff>180) diff=360-diff;
-        if(diff>45 && diff<135) { // 90° bend = elbow
-          var sj=nearestSize(lj.mx,lj.my);
-          if(sj && sj.A===si.A && sj.B===si.B) {
-            elbowCount[ki]=(elbowCount[ki]||0)+1;
-          }
-        }
+        if(diff>45&&diff<135) count++;
       }
     }
-  } else {
-    // No line geometry — use size label counts as proxy
-    sizeEnts.forEach(function(s){
-      var k=s.A+'x'+s.B+'_'+s.bod;
-      if(!sizeGroups[k]) sizeGroups[k]={A:s.A,B:s.B,bod:s.bod,totalLen:0,lineCount:0};
-      sizeGroups[k].totalLen += 5000; // assume 5m per label
-      sizeGroups[k].lineCount++;
-    });
-  }
-
-  // ── Sort groups by size (large → small) and BOD ─────────────────────────
-  var sortedGroups = Object.keys(sizeGroups).sort(function(a,b){
-    var ga=sizeGroups[a], gb=sizeGroups[b];
-    var pa=(ga.A+ga.B)*2, pb=(gb.A+gb.B)*2;
-    if(pb!==pa) return pb-pa;
-    return ga.bod-gb.bod;
+    sizeData[key].elbows=count;
   });
 
-  // ── Taper type determination ─────────────────────────────────────────────
-  // Look at consecutive size groups: how do A and B change?
-  function getTaperType(fromA,fromB,toA,toB) {
-    var dA=fromA-toA, dB=fromB-toB;
-    if(dA===0 && dB>0) return 'Taper (COT)';    // only height reduces
-    if(dA>0 && dB===0) return 'Taper (COT)';    // only width reduces
-    if(dA>0 && dB>0) {
-      // Both reduce — FLAT-L if width reduces more, FLAT-R if height reduces more
-      return dA>=dB ? 'Taper (FLAT-L)' : 'Taper (FLAT-R)';
-    }
-    return 'Taper (COT)';
-  }
+  // ── Build schedule items ──────────────────────────────────────────────────
+  var items=[], tagNo=1;
 
-  // ── Standard lengths ─────────────────────────────────────────────────────
-  var STD_L = {18:1124, 22:1154, 24:1154};
-
-  // ── Build schedule items ─────────────────────────────────────────────────
-  var items = [];
-  var ductNo = 1;
-
-  for(var gi=0; gi<sortedGroups.length; gi++) {
-    var key = sortedGroups[gi];
-    var grp = sizeGroups[key];
-    var A=grp.A, B=grp.B, bod=grp.bod;
+  sortedKeys.forEach(function(key,i){
+    var d=sizeData[key];
+    var A=d.A,B=d.B;
     var perim=(A+B)*2;
-    var gauge = perim>=7000?18:perim>=2500?22:24;
-    var stdL = STD_L[gauge];
-    var dl = bod>7?3:bod>5.7?2:1;
+    var gauge=perim>=7000?18:perim>=2500?22:24;
+    var stdL=STD_L[gauge], smallL=SMALL_L[gauge];
+    var dl=d.bod>7?3:d.bod>5.7?2:1;
+    var straightQty=Math.max(1,Math.round(d.total_mm/stdL));
 
-    // Qty for straight duct = total run length / standard piece length
-    var straightQty = Math.max(1, Math.round(grp.totalLen / stdL));
+    // 1. Shoe Piece
+    items.push({duct_no:String(tagNo++),duct_type:'Shoe Piece',gauge:gauge,
+      connector:'Rev. Flange- TDF',A:A+75,B:B,C:A,D:B,E:0,ext1:0,ext2:0,
+      final_length:150,qty:1,dl_no:dl});
 
-    // 1. SHOE PIECE — entry fitting (one per duct size group)
-    // Inlet is slightly larger: A+75, B same (SMACNA standard shoe offset)
-    items.push({duct_no:String(ductNo++), duct_type:'Shoe Piece',
-      gauge:gauge, connector:'Rev. Flange- TDF',
-      A:A+75, B:B, C:A, D:B, E:0, ext1:0, ext2:0,
-      final_length:150, qty:1, dl_no:dl});
+    // 2. Straight Duct
+    items.push({duct_no:String(tagNo++),duct_type:'Straight Duct',gauge:gauge,
+      connector:'TDF',A:A,B:B,C:A,D:B,E:0,ext1:0,ext2:0,
+      final_length:stdL,qty:straightQty,dl_no:dl});
 
-    // 2. STRAIGHT DUCT — main run pieces
-    items.push({duct_no:String(ductNo++), duct_type:'Straight Duct',
-      gauge:gauge, connector:'TDF',
-      A:A, B:B, C:A, D:B, E:0, ext1:0, ext2:0,
-      final_length:stdL, qty:straightQty, dl_no:dl});
+    // 3. Small Duct
+    items.push({duct_no:String(tagNo++),duct_type:'Small Duct',gauge:gauge,
+      connector:'TDF',A:A,B:B,C:A,D:B,E:0,ext1:0,ext2:0,
+      final_length:smallL,qty:1,dl_no:dl});
 
-    // 3. SMALL DUCT — end connector
-    items.push({duct_no:String(ductNo++), duct_type:'Small Duct',
-      gauge:gauge, connector:'TDF',
-      A:A, B:B, C:A, D:B, E:0, ext1:0, ext2:0,
-      final_length:529, qty:1, dl_no:dl});
-
-    // 4. ELBOWS — one per 90° bend detected
-    var elbows = elbowCount[key] || 0;
-    if(elbows > 0) {
-      items.push({duct_no:String(ductNo++), duct_type:'Elbow',
-        gauge:gauge, connector:'TDF',
-        A:A, B:B, C:A, D:B, E:90, ext1:50, ext2:50,
-        final_length:150, qty:elbows, dl_no:dl});
+    // 4. Elbows (if detected)
+    if(d.elbows>0){
+      items.push({duct_no:String(tagNo++),duct_type:'Elbow',gauge:gauge,
+        connector:'TDF',A:A,B:B,C:A,D:B,E:90,ext1:50,ext2:50,
+        final_length:150,qty:d.elbows,dl_no:dl});
     }
 
-    // 5. TAPER to next smaller size (if there is one)
-    if(gi+1 < sortedGroups.length) {
-      var nextGrp = sizeGroups[sortedGroups[gi+1]];
-      var nA=nextGrp.A, nB=nextGrp.B;
-      // Only add taper if sizes are different
-      if(nA!==A || nB!==B) {
-        var taperType = getTaperType(A,B,nA,nB);
-        // Taper length: roughly half the difference in perimeter, min 400
-        var taperL = Math.max(400, Math.round(Math.abs((A+B)-(nA+nB))*0.3));
-        items.push({duct_no:String(ductNo++), duct_type:taperType,
-          gauge:gauge, connector:'TDF',
-          A:A, B:B, C:nA, D:nB, E:0, ext1:0, ext2:0,
-          final_length:taperL, qty:1, dl_no:dl});
+    // 5. Taper to next size
+    if(i+1<sortedKeys.length){
+      var nd=sizeData[sortedKeys[i+1]];
+      var nA=nd.A,nB=nd.B;
+      if(nA!==A||nB!==B){
+        var dA=A-nA,dB=B-nB;
+        var ttype=dA===0?'Taper (COT)':dB===0?'Taper (COT)':
+                  dA>=dB?'Taper (FLAT-L)':'Taper (FLAT-R)';
+        var tL=Math.max(400,Math.round(((A+B)-(nA+nB))*0.3));
+        items.push({duct_no:String(tagNo++),duct_type:ttype,gauge:gauge,
+          connector:'TDF',A:A,B:B,C:nA,D:nB,E:0,ext1:0,ext2:0,
+          final_length:tL,qty:1,dl_no:dl});
       }
     }
-  }
+  });
 
-  // 6. CLOSING SHEETS — one per DL line (at dead ends)
-  var dlSeen = {};
-  sortedGroups.forEach(function(key){
-    var grp=sizeGroups[key];
-    var dl=grp.bod>7?3:grp.bod>5.7?2:1;
-    // Smallest size per DL gets a closing sheet
-    if(!dlSeen[dl]) dlSeen[dl]={A:grp.A,B:grp.B,gauge:0,dl:dl};
-    var p=(grp.A+grp.B)*2;
-    var g=p>=7000?18:p>=2500?22:24;
-    dlSeen[dl]={A:grp.A,B:grp.B,gauge:g,dl:dl};
+  // 6. Closing Sheet for each DL terminal
+  var dlSeen={};
+  sortedKeys.forEach(function(key){
+    var d=sizeData[key];
+    var dl=d.bod>7?3:d.bod>5.7?2:1;
+    var perim=(d.A+d.B)*2;
+    var gauge=perim>=7000?18:perim>=2500?22:24;
+    dlSeen[dl]={A:d.A,B:d.B,gauge:gauge,dl:dl};
   });
   Object.keys(dlSeen).forEach(function(dl){
     var cs=dlSeen[dl];
-    items.push({duct_no:String(ductNo++), duct_type:'Closing Sheet',
-      gauge:cs.gauge, connector:'TDF',
-      A:cs.A, B:cs.B, C:cs.A, D:cs.B, E:0, ext1:0, ext2:0,
-      final_length:9, qty:1, dl_no:parseInt(dl)});
+    items.push({duct_no:String(tagNo++),duct_type:'Closing Sheet',gauge:cs.gauge,
+      connector:'TDF',A:cs.A,B:cs.B,C:cs.A,D:cs.B,E:0,ext1:0,ext2:0,
+      final_length:9,qty:1,dl_no:parseInt(dl)});
   });
 
-  return {
-    items: items,
-    tagCount: ductLines.length,
-    sizeCount: sizeEnts.length,
-    bestLayer: sizeLayer,
-    lineLayer: lineLayer||'none'
-  };
+  return {items:items,tagCount:0,sizeCount:sizeEnts.length,
+    bestLayer:sizeLayer,lineLayer:lineLayer||'none'};
 }
+
 
 async function readDXFFile(file) {
   return new Promise((res, rej) => {
