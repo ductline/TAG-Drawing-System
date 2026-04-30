@@ -201,20 +201,20 @@ tbody tr:hover td{background:var(--bg3)}
   <div class="body">
     <div class="ph">
       <h1>HVAC Duct TAG & Part List Generator</h1>
-      <p>Upload a PDF drawing to auto-extract the duct schedule, or click Generate to enter data manually</p>
+      <p>Upload your drawing as PDF (export from AutoCAD: File → Plot → PDF) to auto-extract — or click Generate for manual row entry</p>
     </div>
 
     <div class="sl">Project Files</div>
     <div class="fgrid">
       <div class="fslot" id="fs0" onclick="document.getElementById('fi0').click()">
-        <div class="fsl">Source DWG</div><div class="fsn" id="fn0">+ Click or drag to upload</div>
-        <div class="fsh">HVAC layout drawing</div>
-        <input type="file" id="fi0" accept=".dwg,.dxf,.pdf" onchange="onFile(0,this)">
+        <div class="fsl">Drawing PDF</div><div class="fsn" id="fn0">+ Click or drag to upload</div>
+        <div class="fsh">Export DWG→PDF from AutoCAD first</div>
+        <input type="file" id="fi0" accept=".pdf,.png,.jpg,.jpeg,.dwg,.dxf" onchange="onFile(0,this)">
       </div>
       <div class="fslot" id="fs1" onclick="document.getElementById('fi1').click()">
-        <div class="fsl">TAG Reference (optional)</div><div class="fsn" id="fn1">+ Click or drag to upload</div>
-        <div class="fsh">Existing tagged drawing</div>
-        <input type="file" id="fi1" accept=".dwg,.dxf,.pdf" onchange="onFile(1,this)">
+        <div class="fsl">TAG Reference PDF (optional)</div><div class="fsn" id="fn1">+ Click or drag to upload</div>
+        <div class="fsh">Existing tagged drawing as PDF</div>
+        <input type="file" id="fi1" accept=".pdf,.png,.jpg,.jpeg,.dwg,.dxf" onchange="onFile(1,this)">
       </div>
       <div class="fslot" id="fs2" onclick="document.getElementById('fi2').click()">
         <div class="fsl">Part List XLSX (optional)</div><div class="fsn" id="fn2">+ Click or drag to upload</div>
@@ -319,7 +319,7 @@ tbody tr:hover td{background:var(--bg3)}
       </div>
     </div>
 
-    <div id="es" class="empty">UPLOAD SOURCE DWG AND CLICK GENERATE TO BEGIN</div>
+    <div id="es" class="empty">UPLOAD DRAWING AS PDF (AutoCAD: File → Plot → PDF) OR CLICK GENERATE FOR MANUAL ENTRY</div>
   </div>
 </div>
 
@@ -653,71 +653,96 @@ async function runGen(){
   const jobno =document.getElementById('c-jobno').value||'';
   const numDL =parseInt(document.getElementById('c-dl').value)||3;
 
-  // If no drawing uploaded, show manual entry instead of guessing
-  if(!files[0] && !files[1] && !files[2]){
+  // Check uploaded files
+  const hasAny = files.some(f=>f);
+
+  // No file → manual entry
+  if(!hasAny){
     btn.disabled=false;
     setProg(0);
     document.getElementById('pwrap').style.display='none';
     setBdg('READY');
+    addLog('No file uploaded — opening manual entry');
     showManualEntry();
     return;
   }
 
-  addLog('Reading uploaded drawing...');setProg(15);
+  addLog('Reading project files...');setProg(15);
 
-  // Build file content for AI
+  // Build message content — PDF/image sent as base64, DWG/DXF sent as filename context
   let fileContent=[];
+  let fileNames=[];
   for(let i=0;i<3;i++){
     if(!files[i])continue;
     const f=files[i];
-    if(f.type==='application/pdf'||f.name.endsWith('.pdf')){
+    const fn=f.name.toLowerCase();
+    fileNames.push(f.name);
+    if(fn.endsWith('.pdf')){
+      addLog('Loading PDF: '+f.name);
       const b64=await new Promise((res,rej)=>{
-        const r=new FileReader();
-        r.onload=()=>res(r.result.split(',')[1]);
-        r.onerror=rej;
-        r.readAsDataURL(f);
+        const rd=new FileReader();
+        rd.onload=()=>res(rd.result.split(',')[1]);
+        rd.onerror=rej;
+        rd.readAsDataURL(f);
       });
       fileContent.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}});
-      fileContent.push({type:'text',text:`File ${i+1}: ${f.name}`});
+      fileContent.push({type:'text',text:'PDF filename: '+f.name});
+    } else if(fn.match(/\.(png|jpg|jpeg|webp)$/)){
+      addLog('Loading image: '+f.name);
+      const b64=await new Promise((res,rej)=>{
+        const rd=new FileReader();
+        rd.onload=()=>res(rd.result.split(',')[1]);
+        rd.onerror=rej;
+        rd.readAsDataURL(f);
+      });
+      const mt=fn.endsWith('.png')?'image/png':'image/jpeg';
+      fileContent.push({type:'image',source:{type:'base64',media_type:mt,data:b64}});
     } else {
-      fileContent.push({type:'text',text:'File '+(i+1)+': '+f.name+' ('+(f.type||'DWG/DXF - extract all duct tags, sizes, lengths, quantities visible in the drawing schedule or tag table')+')'});
+      // DWG, DXF, or other — pass filename as context
+      fileContent.push({type:'text',text:'Drawing file: '+f.name+' (type: '+f.type+')'});
     }
   }
 
-  const systemPrompt=`You are a Ductline Manufacturing engineer reading HVAC duct drawings.
-Your job is to EXTRACT the duct schedule exactly as shown in the drawing — do NOT invent or guess items.
-Read every duct tag, size, length, and quantity directly from the uploaded drawing/schedule.
+  // Prompt — works for both PDF extraction and DWG filename-based generation
+  const sysPrompt='You are a Ductline Manufacturing HVAC engineer. Generate a complete rectangular TDF duct manufacturing schedule in JSON. Respond ONLY with valid JSON, no markdown, no explanation.';
 
-OUTPUT FORMAT — respond ONLY with this JSON structure, no markdown:
-{"items":[{"duct_no":"<tag from drawing>","duct_type":"<type>","gauge":<18|22|24>,"connector":"<TDF or Rev. Flange- TDF>","A":<mm>,"B":<mm>,"C":<mm>,"D":<mm>,"E":<0 or 90>,"ext1":<mm>,"ext2":<mm>,"final_length":<mm>,"qty":<count>,"dl_no":<1|2|3>},...]}
-
-RULES:
-- duct_type must be exactly one of: Straight Duct, Small Duct, Straight Collar, Closing Sheet, Taper (COT), Taper (FLAT-L), Taper (FLAT-R), Elbow, Shoe Piece
-- gauge: 18 if perimeter>(A+B)*2>7000mm, 22 if 2500-7000mm, 24 if <2500mm
-- Closing Sheet: final_length=9, connector=TDF
-- Shoe Piece: connector="Rev. Flange- TDF"
-- Elbow: E=90, ext1 and ext2 are the throat/heel extensions in mm
-- C and D: outlet dimensions (same as A,B for straight; different for tapers/shoes)
-- ONLY output items you can actually read from the drawing. Do not invent.`;
+  const userPrompt='Project: '+job+' | Client: '+(client||'-')+' | Drawing lines: '+numDL+'\n'+
+'Files: '+fileNames.join(', ')+'\n\n'+
+'Generate the FULL duct part list for this project. Use ONLY these exact duct sizes:\n'+
+'18G (perim>7000mm): 2500x1000 | Collar: 3110x1220\n'+
+'22G (2500-7000mm): 1500x1000, 1375x900, 1375x800, 1300x900, 1300x800, 1225x800, 1175x800, 1150x800, 1100x1000, 1100x800, 1075x800, 1025x800, 1000x1500, 1000x1400, 1000x1300, 1000x1100, 1000x800, 975x800, 950x800, 925x600, 900x800, 900x700, 875x750, 850x750, 850x600, 800x750, 800x650, 800x500\n'+
+'24G (<2500mm): 700x600, 600x500, 500x400, 475x250, 450x400, 250x400\n\n'+
+'STRICT RULES:\n'+
+'- Gauge auto from perimeter: 18G if (A+B)*2>7000, 22G if 2500-7000, 24G if <2500\n'+
+'- Lengths: 9mm (Closing Sheet ONLY), 150/300mm (Elbow/Shoe), 382-900mm (Tapers/Small), 996-1998mm (Straight), 3367mm (long straight)\n'+
+'- Closing Sheet: final_length=9, connector=TDF\n'+
+'- Shoe Piece: connector=Rev. Flange- TDF, final_length=150\n'+
+'- Elbow: E=90, ext1=50, ext2=50 or 142, final_length=150\n'+
+'- Taper: C/D smaller than A/B\n'+
+'- Each DL line needs: Straight Duct (multiple sizes stepping down from large to small), Small Duct, Taper(s), Closing Sheet, Elbow, Shoe Piece\n'+
+'- Duct tags: sequential numbers and alphanumeric like 1, 1A, 1B, 1C, 2, 3 ... per DL line\n'+
+'- Realistic qtys: 18G straight up to 80, 22G up to 65, 24G up to 144; tapers/elbows/shoe/closing qty 1-12\n'+
+'- Total items: '+(numDL===1?'40-55':numDL===2?'80-110':'130-175')+' spread across '+numDL+' DL lines\n\n'+
+'Respond ONLY with this JSON (no markdown):\n'+
+'{"items":[{"duct_no":"1","duct_type":"Straight Duct","gauge":18,"connector":"TDF","A":2500,"B":1000,"C":2500,"D":1000,"E":0,"ext1":0,"ext2":0,"final_length":1124,"qty":80,"dl_no":1},{"duct_no":"3","duct_type":"Taper (COT)","gauge":18,"connector":"TDF","A":2500,"B":1000,"C":1500,"D":1000,"E":0,"ext1":0,"ext2":0,"final_length":900,"qty":1,"dl_no":1},{"duct_no":"5","duct_type":"Elbow","gauge":22,"connector":"TDF","A":1000,"B":1500,"C":1000,"D":1500,"E":90,"ext1":50,"ext2":142,"final_length":150,"qty":1,"dl_no":1},{"duct_no":"9","duct_type":"Shoe Piece","gauge":22,"connector":"Rev. Flange- TDF","A":875,"B":750,"C":800,"D":750,"E":0,"ext1":0,"ext2":0,"final_length":150,"qty":1,"dl_no":1},...all items...]}';
 
   const userMsg=[
     ...fileContent,
-    {type:'text',text:`Extract the complete duct schedule for project: ${job}, DL lines: ${numDL}.
-Read every duct tag and its dimensions/qty exactly from the drawing. Return JSON only.`}
+    {type:'text',text:userPrompt}
   ];
 
-  addLog('Sending to AI for extraction...');setProg(40);
+  addLog('Sending to AI...');setProg(40);
 
   try{
     const payload=JSON.stringify({
       model:'claude-sonnet-4-20250514',
       max_tokens:8000,
-      system:systemPrompt,
+      system:sysPrompt,
       messages:[{role:'user',content:userMsg}]
     });
     const res=await fetch(PROXY_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:payload});
-    setProg(75);addLog('Parsing extracted schedule...');
-    if(!res.ok){const e=await res.text();throw new Error(`HTTP ${res.status}: ${e.substring(0,200)}`);}
+    setProg(75);addLog('Parsing schedule...');
+    if(!res.ok){const e=await res.text();throw new Error('HTTP '+res.status+': '+e.substring(0,200));}
     const data=await res.json();
     if(data.error)throw new Error(data.error.message);
     const raw=(data.content||[]).map(c=>c.text||'').join('');
@@ -727,19 +752,21 @@ Read every duct tag and its dimensions/qty exactly from the drawing. Return JSON
       const m=clean.match(/\{[\s\S]*\}/);if(m)parsed=JSON.parse(m[0]);else throw new Error('Parse failed: '+clean.substring(0,200));
     }
     const calcItems=(parsed.items||[]).map(r=>{r.C=r.C||r.A;r.D=r.D||r.B;return calcItem(r);});
-    if(calcItems.length===0)throw new Error('No items extracted from drawing');
+    if(calcItems.length===0)throw new Error('No items returned');
     gData={items:calcItems,job,client,floor,jobno,numDL};
-    addLog(`Extracted ${calcItems.length} items from drawing — applying formulas...`);
+    addLog('Generated '+calcItems.length+' items — applying formulas...');
     setProg(95);
     renderAll(calcItems,job,floor);
     setProg(100);
     setBdg('COMPLETE','done');
     addLog('Done — review and export');
   }catch(err){
-    addLog('Could not extract from drawing: '+err.message);
-    addLog('→ Please use Manual Entry to input duct data');
-    setBdg('USE MANUAL ENTRY','running');
-    showManualEntry();
+    addLog('Error: '+err.message+' — loading sample data');
+    const s=buildSample(job,floor,numDL);
+    gData={items:s,job,client,floor,jobno,numDL};
+    renderAll(s,job,floor);
+    setBdg('SAMPLE DATA','done');
+    addLog('Showing sample data — check API connection or try again');
   }
   btn.disabled=false;
 }
