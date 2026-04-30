@@ -948,205 +948,34 @@ async function runGen(){
         addLog('Done — ' + calcDxf.length + ' items from DXF. Review duct types/lengths then export.');
         return;
       } else {
-        addLog((dxfResult.error||'No duct size labels found') + ' — trying AI generation');
+        // DXF parsed but no items — show clear error, NO fake AI data
+        var errMsg = dxfResult.error || 'No duct size labels found in DXF.';
+        addLog('ERROR: ' + errMsg);
+        addLog('Possible reasons:');
+        addLog('  1. File is DWG — convert to DXF first (ODA Converter, 2000 ASCII DXF)');
+        addLog('  2. Duct size labels missing or on unrecognised layer');
+        addLog('  3. Imperial drawing — ensure SAD/EAD labels are in the drawing');
+        setBdg('PARSE ERROR','error'); btn.disabled=false; return;
       }
     } catch(dxfErr) {
-      addLog('DXF parse error: '+dxfErr.message+' — falling back to AI');
+      addLog('ERROR: Cannot read file — ' + dxfErr.message);
+      addLog('If DWG file: convert to DXF using ODA File Converter first.');
+      setBdg('FILE ERROR','error'); btn.disabled=false; return;
     }
   }
 
 
-  // Build message content — PDF/image sent as base64, DWG/DXF sent as filename context
-  let fileContent=[];
-  let fileNames=[];
-  for(let i=0;i<3;i++){
-    if(!files[i])continue;
-    const f=files[i];
-    const fn=f.name.toLowerCase();
-    fileNames.push(f.name);
-    if(fn.endsWith('.pdf')){
-      addLog('Loading PDF: '+f.name);
-      const b64=await new Promise((res,rej)=>{
-        const rd=new FileReader();
-        rd.onload=()=>res(rd.result.split(',')[1]);
-        rd.onerror=rej;
-        rd.readAsDataURL(f);
-      });
-      fileContent.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}});
-      fileContent.push({type:'text',text:'PDF filename: '+f.name});
-    } else if(fn.match(/\.(png|jpg|jpeg|webp)$/)){
-      addLog('Loading image: '+f.name);
-      const b64=await new Promise((res,rej)=>{
-        const rd=new FileReader();
-        rd.onload=()=>res(rd.result.split(',')[1]);
-        rd.onerror=rej;
-        rd.readAsDataURL(f);
-      });
-      const mt=fn.endsWith('.png')?'image/png':'image/jpeg';
-      fileContent.push({type:'image',source:{type:'base64',media_type:mt,data:b64}});
-    } else {
-      // DWG, DXF, or other — pass filename as context
-      fileContent.push({type:'text',text:'Drawing file: '+f.name+' (type: '+f.type+')'});
-    }
-  }
-
-  // Prompt — works for both PDF extraction and DWG filename-based generation
-  const sysPrompt='You are a Ductline Manufacturing HVAC engineer. Generate a complete rectangular TDF duct manufacturing schedule in JSON. Respond ONLY with valid JSON, no markdown, no explanation.';
-
-  const userPrompt='Project: '+job+' | Client: '+(client||'-')+' | Drawing lines: '+numDL+'\n'+
-'Files: '+fileNames.join(', ')+'\n\n'+
-'Generate the FULL duct part list for this project. Use ONLY these exact duct sizes:\n'+
-'18G (perim>7000mm): 2500x1000 | Collar: 3110x1220\n'+
-'22G (2500-7000mm): 1500x1000, 1375x900, 1375x800, 1300x900, 1300x800, 1225x800, 1175x800, 1150x800, 1100x1000, 1100x800, 1075x800, 1025x800, 1000x1500, 1000x1400, 1000x1300, 1000x1100, 1000x800, 975x800, 950x800, 925x600, 900x800, 900x700, 875x750, 850x750, 850x600, 800x750, 800x650, 800x500\n'+
-'24G (<2500mm): 700x600, 600x500, 500x400, 475x250, 450x400, 250x400\n\n'+
-'STRICT RULES:\n'+
-'- Gauge auto from perimeter: 18G if (A+B)*2>7000, 22G if 2500-7000, 24G if <2500\n'+
-'- Lengths: 9mm (Closing Sheet ONLY), 150/300mm (Elbow/Shoe), 382-900mm (Tapers/Small), 996-1998mm (Straight), 3367mm (long straight)\n'+
-'- Closing Sheet: final_length=9, connector=TDF\n'+
-'- Shoe Piece: connector=Rev. Flange- TDF, final_length=150\n'+
-'- Elbow: E=90, ext1=50, ext2=50 or 142, final_length=150\n'+
-'- Taper: C/D smaller than A/B\n'+
-'- Each DL line needs: Straight Duct (multiple sizes stepping down from large to small), Small Duct, Taper(s), Closing Sheet, Elbow, Shoe Piece\n'+
-'- Duct tags: sequential numbers and alphanumeric like 1, 1A, 1B, 1C, 2, 3 ... per DL line\n'+
-'- Realistic qtys: 18G straight up to 80, 22G up to 65, 24G up to 144; tapers/elbows/shoe/closing qty 1-12\n'+
-'- Total items: '+(numDL===1?'40-55':numDL===2?'80-110':'130-175')+' spread across '+numDL+' DL lines\n\n'+
-'Respond ONLY with this JSON (no markdown):\n'+
-'{"items":[{"duct_no":"1","duct_type":"Straight Duct","gauge":18,"connector":"TDF","A":2500,"B":1000,"C":2500,"D":1000,"E":0,"ext1":0,"ext2":0,"final_length":1124,"qty":80,"dl_no":1},{"duct_no":"3","duct_type":"Taper (COT)","gauge":18,"connector":"TDF","A":2500,"B":1000,"C":1500,"D":1000,"E":0,"ext1":0,"ext2":0,"final_length":900,"qty":1,"dl_no":1},{"duct_no":"5","duct_type":"Elbow","gauge":22,"connector":"TDF","A":1000,"B":1500,"C":1000,"D":1500,"E":90,"ext1":50,"ext2":142,"final_length":150,"qty":1,"dl_no":1},{"duct_no":"9","duct_type":"Shoe Piece","gauge":22,"connector":"Rev. Flange- TDF","A":875,"B":750,"C":800,"D":750,"E":0,"ext1":0,"ext2":0,"final_length":150,"qty":1,"dl_no":1},...all items...]}';
-
-  const userMsg=[
-    ...fileContent,
-    {type:'text',text:userPrompt}
-  ];
-
-  addLog('Sending to AI...');setProg(40);
-
-  try{
-    const payload=JSON.stringify({
-      model:'claude-sonnet-4-20250514',
-      max_tokens:8000,
-      system:sysPrompt,
-      messages:[{role:'user',content:userMsg}]
-    });
-    const res=await fetch(PROXY_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:payload});
-    setProg(75);addLog('Parsing schedule...');
-    if(!res.ok){const e=await res.text();throw new Error('HTTP '+res.status+': '+e.substring(0,200));}
-    const data=await res.json();
-    if(data.error)throw new Error(data.error.message);
-    const raw=(data.content||[]).map(c=>c.text||'').join('');
-    const clean=raw.replace(/```json|```/g,'').trim();
-    let parsed;
-    try{parsed=JSON.parse(clean);}catch(e){
-      const m=clean.match(/\{[\s\S]*\}/);if(m)parsed=JSON.parse(m[0]);else throw new Error('Parse failed: '+clean.substring(0,200));
-    }
-    const calcItems=(parsed.items||[]).map(r=>{r.C=r.C||r.A;r.D=r.D||r.B;return calcItem(r);});
-    if(calcItems.length===0)throw new Error('No items returned');
-    gData={items:calcItems,job,client,floor,jobno,numDL};
-    addLog('Generated '+calcItems.length+' items — applying formulas...');
-    setProg(95);
-    renderAll(calcItems,job,floor);
-    setProg(100);
-    setBdg('COMPLETE','done');
-    addLog('Done — review and export');
-  }catch(err){
-    addLog('Error: '+err.message+' — loading sample data');
-    const s=buildSample(job,floor,numDL);
-    gData={items:s,job,client,floor,jobno,numDL};
-    renderAll(s,job,floor);
-    setBdg('SAMPLE DATA','done');
-    addLog('Showing sample data — check API connection or try again');
-  }
-  btn.disabled=false;
+  // No DXF was uploaded or DXF parsing failed — show instructions
+  addLog('No DXF file detected.');
+  addLog('To generate a schedule:');
+  addLog('  1. Convert your DWG to DXF using ODA File Converter');
+  addLog('     Select: 2000 ASCII DXF format');
+  addLog('  2. Upload the .dxf file');
+  addLog('  3. Click Generate');
+  setBdg('UPLOAD DXF FILE','error'); btn.disabled=false;
 }
 
-// ─── RENDER ───────────────────────────────────────────────────────────────────
 function renderAll(items,job,floor){
-  // Metrics
-  const total_qty  = items.reduce((s,i)=>s+i.qty,0);
-  const total_area = items.reduce((s,i)=>s+i.area_sqft,0);
-  const g18 = items.filter(i=>i.gauge===18).reduce((s,i)=>s+i.area_sqft,0);
-  const g22 = items.filter(i=>i.gauge===22).reduce((s,i)=>s+i.area_sqft,0);
-  const g24 = items.filter(i=>i.gauge===24).reduce((s,i)=>s+i.area_sqft,0);
-  document.getElementById('mrow').innerHTML=`
-    <div class="mc"><div class="mv">${f0(total_qty)}</div><div class="ml">Total Qty</div></div>
-    <div class="mc"><div class="mv">${f0(total_area)}</div><div class="ml">Area Sq.Ft</div></div>
-    <div class="mc"><div class="mv">${f0(total_area*0.0929)}</div><div class="ml">Area Sq.M</div></div>
-    <div class="mc"><div class="mv">${f0(g18)}</div><div class="ml">18G Sq.Ft</div></div>
-    <div class="mc"><div class="mv">${f0(g22)}</div><div class="ml">22G Sq.Ft</div></div>`;
-
-  // Part 1 table
-  document.getElementById('body-part1').innerHTML=items.map(r=>`<tr>
-    <td class="hi" style="font-family:monospace;font-size:10px">${r.duct_no}</td>
-    <td><span class="tbg ${tcls(r.duct_type)}">${r.duct_type}</span></td>
-    <td class="r">${r.ext1}</td><td class="r">${r.ext2}</td>
-    <td class="dim">${r.gauge}G</td>
-    <td style="font-size:9px;color:var(--tl)">${r.connector}</td>
-    <td class="dim">${r.A}</td><td class="dim">${r.B}</td>
-    <td class="dim">${r.C}</td><td class="dim">${r.D}</td>
-    <td class="r">${r.E}</td>
-    <td class="r hi">${r.final_length}</td>
-    <td class="r hi">${r.qty}</td>
-    <td class="r">${f2(r.area_sqft)}</td>
-    <td class="r">${r.dl_no}</td>
-    <td class="r">${r.bucket_0_750?f2(r.bucket_0_750):''}</td>
-    <td class="r">${r.bucket_751_1500?f2(r.bucket_751_1500):''}</td>
-    <td class="r">${r.bucket_1501_2100?f2(r.bucket_1501_2100):''}</td>
-    <td class="r">${r.perimeter}</td>
-    <td class="r">${f2(r.sqft)}</td>
-    <td class="r">${r.bend_length||''}</td>
-    <td class="r">${r.taper_sqft?f2(r.taper_sqft):''}</td>
-    <td class="r">${r.taper_sqft2?f2(r.taper_sqft2):''}</td>
-    <td class="r">${r.dead_end_main?f2(r.dead_end_main):''}</td>
-    <td class="r">${r.dead_end_small?f2(r.dead_end_small):''}</td>
-    <td class="r">${r.rev_flange_sqft?f2(r.rev_flange_sqft):''}</td>
-    <td class="r">${r.tdf_side_a||''}</td>
-    <td class="r">${r.tdf_side_b||''}</td>
-    <td class="r">${r.tdf_total_mm||''}</td>
-    <td class="r hi">${r.tdf_count||''}</td>
-    <td class="r">${r.corners}</td>
-    <td class="r">${r.clips_total}</td>
-    <td class="r">${f2(r.gasket_mtr)}</td>
-    <td class="r">${f2(r.gasket_mtr2)}</td>
-    <td class="r">${r.corner_a}</td><td class="r">${r.clip_a}</td>
-    <td class="r">${r.corner_b}</td><td class="r">${r.clip_b}</td>
-  </tr>`).join('');
-
-  // P-Sheet grouped by type
-  const groups={};
-  items.forEach(i=>{(groups[i.duct_type]=groups[i.duct_type]||[]).push(i);});
-  let phtml='';
-  Object.entries(groups).forEach(([type,rows])=>{
-    const tqty=rows.reduce((s,r)=>s+r.qty,0);
-    const tsqft=rows.reduce((s,r)=>s+r.area_sqft,0);
-    phtml+=`<div class="bsec">
-      <div class="bsec-head"><span><span class="tbg ${tcls(type)}">${type}</span></span>
-        <span style="color:var(--tm);font-size:10px">${f0(tqty)} pcs &nbsp;|&nbsp; ${f2(tsqft)} sq.ft</span></div>
-      <div class="tbl-outer"><table class="psheet">
-        <thead><tr>
-          <th>Duct No</th><th>Gauge</th><th>Connector</th>
-          <th>A</th><th>B</th><th>C</th><th>D</th><th>E</th>
-          <th>Final Len</th><th>Qty</th><th>Area Sq.Ft</th>
-          <th>DL</th><th>Perimeter</th><th>TDF Count</th>
-          <th>Corners</th><th>Clips</th><th>Gasket Mtr</th>
-        </tr></thead>
-        <tbody>${rows.map(r=>`<tr>
-          <td class="hi" style="font-family:monospace;font-size:10px">${r.duct_no}</td>
-          <td class="dim">${r.gauge}G</td>
-          <td style="font-size:9px;color:var(--tl)">${r.connector}</td>
-          <td class="dim">${r.A}</td><td class="dim">${r.B}</td>
-          <td class="dim">${r.C}</td><td class="dim">${r.D}</td>
-          <td class="r">${r.E}</td>
-          <td class="r hi">${r.final_length}</td>
-          <td class="r hi">${r.qty}</td>
-          <td class="r">${f2(r.area_sqft)}</td>
-          <td class="r">${r.dl_no}</td>
-          <td class="r">${r.perimeter}</td>
-          <td class="r">${r.tdf_count}</td>
-          <td class="r">${r.corners}</td>
-          <td class="r">${r.clips_total}</td>
-          <td class="r">${f2(r.gasket_mtr)}</td>
-        </tr>`).join('')}</tbody>
-      </table></div></div>`;
-  });
   document.getElementById('psheet-content').innerHTML=phtml;
 
   // BOM cards
