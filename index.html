@@ -208,13 +208,13 @@ tbody tr:hover td{background:var(--bg3)}
     <div class="fgrid">
       <div class="fslot" id="fs0" onclick="document.getElementById('fi0').click()">
         <div class="fsl">Drawing PDF</div><div class="fsn" id="fn0">+ Click or drag to upload</div>
-        <div class="fsh">Export DWG→PDF from AutoCAD first</div>
-        <input type="file" id="fi0" accept=".pdf,.png,.jpg,.jpeg,.dwg,.dxf" onchange="onFile(0,this)">
+        <div class="fsh">Upload DXF (preferred) or PDF/PNG</div>
+        <input type="file" id="fi0" accept=".dxf,.pdf,.png,.jpg,.jpeg,.dwg" onchange="onFile(0,this)">
       </div>
       <div class="fslot" id="fs1" onclick="document.getElementById('fi1').click()">
         <div class="fsl">TAG Reference PDF (optional)</div><div class="fsn" id="fn1">+ Click or drag to upload</div>
         <div class="fsh">Existing tagged drawing as PDF</div>
-        <input type="file" id="fi1" accept=".pdf,.png,.jpg,.jpeg,.dwg,.dxf" onchange="onFile(1,this)">
+        <input type="file" id="fi1" accept=".dxf,.pdf,.png,.jpg,.jpeg,.dwg" onchange="onFile(1,this)">
       </div>
       <div class="fslot" id="fs2" onclick="document.getElementById('fi2').click()">
         <div class="fsl">Part List XLSX (optional)</div><div class="fsn" id="fn2">+ Click or drag to upload</div>
@@ -543,6 +543,155 @@ function f2(n){return (parseFloat(n)||0).toFixed(2)}
 function f0(n){return Math.round(parseFloat(n)||0).toLocaleString()}
 function nn(v){return v||0}
 
+
+// ─── DXF PARSER — generic, works on any DXF regardless of layer names ───────
+function parseDXF(text) {
+  var lines = text.split(/\r?\n/);
+  var entities = [], cur = null;
+  for (var i = 0; i + 1 < lines.length; i += 2) {
+    var code = lines[i].trim(), val = lines[i+1].trim();
+    if (code === '0') {
+      if (cur && cur.text) entities.push(cur);
+      cur = (val==='TEXT'||val==='MTEXT'||val==='ATTRIB'||val==='ATTDEF')
+        ? {type:val, text:'', layer:'', x:0, y:0} : null;
+    } else if (cur) {
+      if (code==='1')  cur.text = val;
+      if (code==='3')  cur.text += val;
+      if (code==='8')  cur.layer = val;
+      if (code==='10') cur.x = parseFloat(val)||0;
+      if (code==='20') cur.y = parseFloat(val)||0;
+    }
+  }
+  if (cur && cur.text) entities.push(cur);
+  return entities;
+}
+
+function cleanMText(t) {
+  t = t.replace(/\\[A-Za-z][^;]*;/g, '');
+  t = t.replace(/\\U\+[0-9A-F]+/gi, '');
+  t = t.replace(/\\M\+[0-9A-F]+/gi, '');
+  t = t.replace(/\\P/gi, ' ');
+  t = t.replace(/[{}]/g, '').trim();
+  return t;
+}
+
+function extractDuctScheduleFromDXF(entities) {
+  var dimRe = /(\d{3,4})[xX*x×](\d{3,4})/;
+  var tagRe = /^\d{1,3}[A-Za-z]?$/;
+
+  // ── STEP 1: Find which layer has the most valid duct size labels ──────────
+  // "Valid" = NNNNxNNNN where A is 200-3500mm, B is 100-2000mm, A>=B
+  // This works regardless of layer name — client can call it anything
+  var layerScore = {}, layerEnts = {};
+  entities.forEach(function(e) {
+    var t = cleanMText(e.text);
+    var m = dimRe.exec(t);
+    if (!m) return;
+    var A = parseInt(m[1]), B = parseInt(m[2]);
+    if (A < 200 || B < 100 || A > 3500 || B > 2000 || A < B) return;
+    var l = e.layer;
+    layerScore[l] = (layerScore[l]||0) + 1;
+    if (!layerEnts[l]) layerEnts[l] = [];
+    layerEnts[l].push({text:t, x:e.x, y:e.y, A:A, B:B});
+  });
+
+  if (Object.keys(layerScore).length === 0) {
+    return {items:[], tagCount:0, sizeCount:0, error:'No duct size labels found in DXF'};
+  }
+
+  // Pick layer with highest score as the duct annotation layer
+  var bestLayer = Object.keys(layerScore).sort(function(a,b){
+    return layerScore[b]-layerScore[a];
+  })[0];
+  var sizeEnts = layerEnts[bestLayer];
+
+  // ── STEP 2: Find the biggest layer (main drawing layer with tag numbers) ──
+  var layerCounts = {};
+  entities.forEach(function(e){ layerCounts[e.layer]=(layerCounts[e.layer]||0)+1; });
+  var mainLayer = Object.keys(layerCounts).sort(function(a,b){
+    return layerCounts[b]-layerCounts[a];
+  })[0];
+
+  // Collect tag numbers (1-500) from the main layer
+  var tagEnts = [];
+  entities.forEach(function(e) {
+    if (e.layer !== mainLayer) return;
+    var t = cleanMText(e.text);
+    if (!tagRe.test(t)) return;
+    var n = parseInt(t.replace(/[A-Za-z]/g,''));
+    if (n >= 1 && n <= 500) tagEnts.push({tag:t, x:e.x, y:e.y, n:n});
+  });
+
+  var items = [];
+
+  // ── STEP 3a: If we have tag numbers, correlate each with nearest size label
+  if (tagEnts.length > 5 && sizeEnts.length > 0) {
+    var used = {};
+    tagEnts.forEach(function(tag) {
+      if (used[tag.tag]) return;
+      // Find nearest size label
+      var nearest = null, minDist = Infinity;
+      sizeEnts.forEach(function(s) {
+        var d = Math.sqrt(Math.pow(s.x-tag.x,2)+Math.pow(s.y-tag.y,2));
+        if (d < minDist) { minDist=d; nearest=s; }
+      });
+      if (!nearest || minDist > 15000) return;
+      var A=nearest.A, B=nearest.B;
+      var perim=(A+B)*2;
+      var gauge=perim>7000?18:perim>=2500?22:24;
+      used[tag.tag] = true;
+      items.push({
+        duct_no: tag.tag,
+        duct_type: 'Straight Duct',
+        gauge: gauge, connector: 'TDF',
+        A:A, B:B, C:A, D:B, E:0, ext1:0, ext2:0,
+        final_length: gauge===18?1124:1154,
+        qty: 1, dl_no: 1
+      });
+    });
+  }
+
+  // ── STEP 3b: Fallback — group unique sizes, qty = count of labels ─────────
+  if (items.length === 0) {
+    var bySize = {};
+    sizeEnts.forEach(function(s) {
+      var k = s.A+'x'+s.B;
+      if (!bySize[k]) bySize[k]={A:s.A,B:s.B,count:0};
+      bySize[k].count++;
+    });
+    var dn = 1;
+    Object.keys(bySize).sort(function(a,b){
+      return (bySize[b].A+bySize[b].B)*2-(bySize[a].A+bySize[a].B)*2;
+    }).forEach(function(k){
+      var s=bySize[k];
+      var perim=(s.A+s.B)*2;
+      var gauge=perim>7000?18:perim>=2500?22:24;
+      items.push({
+        duct_no:String(dn++), duct_type:'Straight Duct',
+        gauge:gauge, connector:'TDF',
+        A:s.A,B:s.B,C:s.A,D:s.B,E:0,ext1:0,ext2:0,
+        final_length:1154, qty:s.count, dl_no:1
+      });
+    });
+  }
+
+  return {
+    items: items,
+    tagCount: tagEnts.length,
+    sizeCount: sizeEnts.length,
+    bestLayer: bestLayer
+  };
+}
+
+async function readDXFFile(file) {
+  return new Promise((res, rej) => {
+    const reader = new FileReader();
+    reader.onload = e => res(e.target.result);
+    reader.onerror = rej;
+    reader.readAsText(file, 'utf-8');
+  });
+}
+
 // ─── GENERATION ───────────────────────────────────────────────────────────────
 let gData=null;
 
@@ -668,6 +817,57 @@ async function runGen(){
   }
 
   addLog('Reading project files...');setProg(15);
+
+  // ── If DXF file uploaded → parse directly, no AI needed ──
+  const dxfFile = files.find(f => f && f.name.toLowerCase().endsWith('.dxf'));
+  if (dxfFile) {
+    addLog('DXF detected — parsing directly...');setProg(30);
+    try {
+      const dxfText = await readDXFFile(dxfFile);
+      addLog('Parsing ' + dxfFile.name + ' (' + Math.round(dxfText.length/1024) + ' KB)...');
+      const textEnts = parseDXF(dxfText);
+      addLog('Found ' + textEnts.length + ' text entities in drawing...');
+      setProg(60);
+      const { items: dxfItems, rawTexts, rowCount } = extractDuctScheduleFromDXF(textEnts);
+      if (dxfItems.length > 0) {
+        addLog('Extracted ' + dxfItems.length + ' duct items from ' + rowCount + ' schedule rows');
+        // Send raw texts to AI to verify/enrich extraction
+        addLog('Sending to AI for schedule verification...');
+        const verifyPrompt = 'You are a Ductline Manufacturing HVAC engineer. I extracted these text strings from an AutoCAD DXF drawing: ' + rawTexts.slice(0,200).join(' | ') + '\n\nI also auto-detected these duct items from the drawing: ' + JSON.stringify(dxfItems.slice(0,10)) + '\n\nBased on ALL the text strings above, generate the complete duct manufacturing schedule. Use ONLY sizes and quantities you can see in the text data above. Return JSON only: {"items":[...]}';
+        const payload2 = JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:8000, system:'You are a Ductline Manufacturing HVAC engineer. Respond ONLY with valid JSON, no markdown.', messages:[{role:'user',content:verifyPrompt}] });
+        try {
+          const r2 = await fetch(PROXY_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:payload2});
+          const d2 = await r2.json();
+          const raw2 = (d2.content||[]).map(c=>c.text||'').join('');
+          const clean2 = raw2.replace(/```json|```/g,'').trim();
+          const p2 = JSON.parse(clean2.match(/\{[\s\S]*\}/)?.[0] || clean2);
+          const aiItems = (p2.items||[]).map(r=>{r.C=r.C||r.A;r.D=r.D||r.B;return calcItem(r);});
+          if (aiItems.length >= dxfItems.length) {
+            addLog('AI verified schedule: ' + aiItems.length + ' items');
+            gData={items:aiItems,job,client,floor,jobno,numDL};
+            renderAll(aiItems,job,floor);
+            setProg(100); setBdg('COMPLETE','done'); btn.disabled=false;
+            addLog('Done from DXF — review and export');
+            return;
+          }
+        } catch(e2) { addLog('AI verify skipped: '+e2.message); }
+        // Use direct DXF extraction
+        const calcDxf = dxfItems.map(r=>{r.C=r.C||r.A;r.D=r.D||r.B;return calcItem(r);});
+        gData={items:calcDxf,job,client,floor,jobno,numDL};
+        renderAll(calcDxf,job,floor);
+        setProg(100); setBdg('COMPLETE (DXF)','done'); btn.disabled=false;
+        addLog('Done from DXF — review and export');
+        return;
+      } else {
+        addLog('No duct schedule table found in DXF — schedule may be on a different layer');
+        addLog('Tip: make sure your duct schedule table is on a visible layer in AutoCAD before exporting DXF');
+        addLog('Falling back to AI generation from filename...');
+      }
+    } catch(dxfErr) {
+      addLog('DXF parse error: '+dxfErr.message+' — falling back to AI');
+    }
+  }
+
 
   // Build message content — PDF/image sent as base64, DWG/DXF sent as filename context
   let fileContent=[];
