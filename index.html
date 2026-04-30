@@ -680,7 +680,7 @@ async function runGen(){
       fileContent.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}});
       fileContent.push({type:'text',text:`File ${i+1}: ${f.name}`});
     } else {
-      fileContent.push({type:'text',text:`File ${i+1}: ${f.name} (${f.type||'DWG/DXF — extract all duct tags, sizes, lengths, quantities visible in the drawing schedule or tag table})`});
+      fileContent.push({type:'text',text:'File '+(i+1)+': '+f.name+' ('+(f.type||'DWG/DXF - extract all duct tags, sizes, lengths, quantities visible in the drawing schedule or tag table')+')'});
     }
   }
 
