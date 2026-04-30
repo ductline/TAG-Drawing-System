@@ -503,6 +503,11 @@ function onFile(i,inp){
   files[i]=f;
   document.getElementById('fn'+i).textContent=f.name;
   document.getElementById('fs'+i).classList.add('loaded');
+  // Clear any previous results when new file uploaded
+  gData=null;
+  setBdg('READY','');
+  document.getElementById('log').textContent='';
+  setProg(0);
 }
 [0,1,2].forEach(i=>{
   const s=document.getElementById('fs'+i);
@@ -635,12 +640,14 @@ function extractDuctScheduleFromDXF(entities) {
       error:'No duct size labels found. Check DXF layer names.'};
   }
 
-  // ── Find duct line layer (most lines 100–50000mm) ─────────────────────────
+  // ── Find duct line layer (most lines 500–30000mm = real duct segments) ───
   var linesByLayer={}, lineScore={};
+  // Min 500mm to exclude dimension lines, detail lines, hatching etc.
+  var MIN_DUCT_LEN = 500;
   entities.forEach(function(e){
     if(e.etype!=='line') return;
     var len=Math.sqrt(Math.pow(e.x2-e.x1,2)+Math.pow(e.y2-e.y1,2));
-    if(len<100||len>50000) return;
+    if(len<MIN_DUCT_LEN||len>30000) return;
     lineScore[e.layer]=(lineScore[e.layer]||0)+1;
     if(!linesByLayer[e.layer])linesByLayer[e.layer]=[];
     linesByLayer[e.layer].push({len:len,
