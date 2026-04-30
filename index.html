@@ -828,40 +828,18 @@ async function runGen(){
       const textEnts = parseDXF(dxfText);
       addLog('Found ' + textEnts.length + ' text entities in drawing...');
       setProg(60);
-      const { items: dxfItems, rawTexts, rowCount } = extractDuctScheduleFromDXF(textEnts);
+      const dxfResult = extractDuctScheduleFromDXF(textEnts);
+      const dxfItems = dxfResult.items || [];
       if (dxfItems.length > 0) {
-        addLog('Extracted ' + dxfItems.length + ' duct items from ' + rowCount + ' schedule rows');
-        // Send raw texts to AI to verify/enrich extraction
-        addLog('Sending to AI for schedule verification...');
-        const verifyPrompt = 'You are a Ductline Manufacturing HVAC engineer. I extracted these text strings from an AutoCAD DXF drawing: ' + rawTexts.slice(0,200).join(' | ') + '\n\nI also auto-detected these duct items from the drawing: ' + JSON.stringify(dxfItems.slice(0,10)) + '\n\nBased on ALL the text strings above, generate the complete duct manufacturing schedule. Use ONLY sizes and quantities you can see in the text data above. Return JSON only: {"items":[...]}';
-        const payload2 = JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:8000, system:'You are a Ductline Manufacturing HVAC engineer. Respond ONLY with valid JSON, no markdown.', messages:[{role:'user',content:verifyPrompt}] });
-        try {
-          const r2 = await fetch(PROXY_URL,{method:'POST',headers:{'Content-Type':'text/plain'},body:payload2});
-          const d2 = await r2.json();
-          const raw2 = (d2.content||[]).map(c=>c.text||'').join('');
-          const clean2 = raw2.replace(/```json|```/g,'').trim();
-          const p2 = JSON.parse(clean2.match(/\{[\s\S]*\}/)?.[0] || clean2);
-          const aiItems = (p2.items||[]).map(r=>{r.C=r.C||r.A;r.D=r.D||r.B;return calcItem(r);});
-          if (aiItems.length >= dxfItems.length) {
-            addLog('AI verified schedule: ' + aiItems.length + ' items');
-            gData={items:aiItems,job,client,floor,jobno,numDL};
-            renderAll(aiItems,job,floor);
-            setProg(100); setBdg('COMPLETE','done'); btn.disabled=false;
-            addLog('Done from DXF — review and export');
-            return;
-          }
-        } catch(e2) { addLog('AI verify skipped: '+e2.message); }
-        // Use direct DXF extraction
-        const calcDxf = dxfItems.map(r=>{r.C=r.C||r.A;r.D=r.D||r.B;return calcItem(r);});
+        addLog('Extracted ' + dxfItems.length + ' items — layer: "' + (dxfResult.bestLayer||'auto') + '" | ' + (dxfResult.sizeCount||0) + ' size labels, ' + (dxfResult.tagCount||0) + ' duct tags');
+        const calcDxf = dxfItems.map(function(r){r.C=r.C||r.A; r.D=r.D||r.B; return calcItem(r);});
         gData={items:calcDxf,job,client,floor,jobno,numDL};
         renderAll(calcDxf,job,floor);
-        setProg(100); setBdg('COMPLETE (DXF)','done'); btn.disabled=false;
-        addLog('Done from DXF — review and export');
+        setProg(100); setBdg('COMPLETE — DXF','done'); btn.disabled=false;
+        addLog('Done — ' + calcDxf.length + ' items from DXF. Review duct types/lengths then export.');
         return;
       } else {
-        addLog('No duct schedule table found in DXF — schedule may be on a different layer');
-        addLog('Tip: make sure your duct schedule table is on a visible layer in AutoCAD before exporting DXF');
-        addLog('Falling back to AI generation from filename...');
+        addLog((dxfResult.error||'No duct size labels found') + ' — trying AI generation');
       }
     } catch(dxfErr) {
       addLog('DXF parse error: '+dxfErr.message+' — falling back to AI');
