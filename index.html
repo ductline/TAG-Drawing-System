@@ -544,7 +544,7 @@ function f0(n){return Math.round(parseFloat(n)||0).toLocaleString()}
 function nn(v){return v||0}
 
 
-// ─── DXF PARSER — generic, works on any DXF regardless of layer names ───────
+// ─── DXF PARSER — generic, works on any DXF regardless of layer names ────────
 function parseDXF(text) {
   var lines = text.split(/\r?\n/);
   var entities = [], cur = null;
@@ -576,110 +576,151 @@ function cleanMText(t) {
 }
 
 function extractDuctScheduleFromDXF(entities) {
-  var dimRe = /(\d{3,4})[xX*x×](\d{3,4})/;
-  var tagRe = /^\d{1,3}[A-Za-z]?$/;
+  var dimRe  = /(\d{3,4})[xX*](\d{3,4})/;
+  var tagRe  = /^\d{1,3}[A-Za-z]?$/;
+  var numRe  = /^\d{2,4}$/;
 
-  // ── STEP 1: Find which layer has the most valid duct size labels ──────────
-  // "Valid" = NNNNxNNNN where A is 200-3500mm, B is 100-2000mm, A>=B
-  // This works regardless of layer name — client can call it anything
-  var layerScore = {}, layerEnts = {};
-  entities.forEach(function(e) {
-    var t = cleanMText(e.text);
-    var m = dimRe.exec(t);
-    if (!m) return;
-    var A = parseInt(m[1]), B = parseInt(m[2]);
-    if (A < 200 || B < 100 || A > 3500 || B > 2000 || A < B) return;
-    var l = e.layer;
-    layerScore[l] = (layerScore[l]||0) + 1;
-    if (!layerEnts[l]) layerEnts[l] = [];
-    layerEnts[l].push({text:t, x:e.x, y:e.y, A:A, B:B});
-  });
+  // Known duct lengths from manufacturing standard
+  var KNOWN_LENGTHS = new Set([9,150,175,250,300,382,410,416,425,431,435,
+    443,446,449,450,463,465,466,469,470,473,476,485,514,529,553,590,
+    600,623,668,703,705,748,757,767,798,800,825,836,850,854,899,900,
+    950,996,998,1001,1019,1035,1046,1089,1091,1118,1124,1154,1201,
+    1249,1304,1325,1341,1404,1481,1574,1583,1626,1725,1740,1775,
+    1823,1998,2308,3367]);
 
-  if (Object.keys(layerScore).length === 0) {
-    return {items:[], tagCount:0, sizeCount:0, error:'No duct size labels found in DXF'};
-  }
-
-  // Pick layer with highest score as the duct annotation layer
-  var bestLayer = Object.keys(layerScore).sort(function(a,b){
-    return layerScore[b]-layerScore[a];
-  })[0];
-  var sizeEnts = layerEnts[bestLayer];
-
-  // ── STEP 2: Find the biggest layer (main drawing layer with tag numbers) ──
+  // ── Find main layer (most text entities = duct drawing layer) ────────────
   var layerCounts = {};
   entities.forEach(function(e){ layerCounts[e.layer]=(layerCounts[e.layer]||0)+1; });
   var mainLayer = Object.keys(layerCounts).sort(function(a,b){
     return layerCounts[b]-layerCounts[a];
   })[0];
 
-  // Collect tag numbers (1-500) from the main layer
-  var tagEnts = [];
+  // ── Find best size-label layer (most valid AxB labels) ───────────────────
+  var sizeScore = {}, sizeEnts = {};
+  entities.forEach(function(e) {
+    var t = cleanMText(e.text), m = dimRe.exec(t);
+    if (!m) return;
+    var A=parseInt(m[1]), B=parseInt(m[2]);
+    if (A<200||B<100||A>3500||B>2000||A<B) return;
+    sizeScore[e.layer] = (sizeScore[e.layer]||0)+1;
+    if (!sizeEnts[e.layer]) sizeEnts[e.layer]=[];
+    sizeEnts[e.layer].push({text:t,x:e.x,y:e.y,A:A,B:B});
+  });
+  var sizeLayer = Object.keys(sizeScore).sort(function(a,b){
+    return sizeScore[b]-sizeScore[a];
+  })[0];
+  var mceEnts = sizeLayer ? (sizeEnts[sizeLayer]||[]) : [];
+
+  // ── Collect main layer entities ──────────────────────────────────────────
+  var mainEnts = [];
   entities.forEach(function(e) {
     if (e.layer !== mainLayer) return;
     var t = cleanMText(e.text);
-    if (!tagRe.test(t)) return;
-    var n = parseInt(t.replace(/[A-Za-z]/g,''));
-    if (n >= 1 && n <= 500) tagEnts.push({tag:t, x:e.x, y:e.y, n:n});
+    if (t) mainEnts.push({text:t, x:e.x, y:e.y});
   });
 
-  var items = [];
+  // ── Count tag occurrences and record first position ──────────────────────
+  var tagCounts = {}, tagFirst = {};
+  mainEnts.forEach(function(e) {
+    var t = e.text;
+    if (!tagRe.test(t)) return;
+    var n = parseInt(t.replace(/[A-Za-z]/g,''));
+    if (n < 1 || n > 500) return;
+    tagCounts[t] = (tagCounts[t]||0) + 1;
+    if (!tagFirst[t]) tagFirst[t] = e;
+  });
 
-  // ── STEP 3a: If we have tag numbers, correlate each with nearest size label
-  if (tagEnts.length > 5 && sizeEnts.length > 0) {
-    var used = {};
-    tagEnts.forEach(function(tag) {
-      if (used[tag.tag]) return;
-      // Find nearest size label
-      var nearest = null, minDist = Infinity;
-      sizeEnts.forEach(function(s) {
-        var d = Math.sqrt(Math.pow(s.x-tag.x,2)+Math.pow(s.y-tag.y,2));
-        if (d < minDist) { minDist=d; nearest=s; }
-      });
-      if (!nearest || minDist > 15000) return;
-      var A=nearest.A, B=nearest.B;
-      var perim=(A+B)*2;
-      var gauge=perim>7000?18:perim>=2500?22:24;
-      used[tag.tag] = true;
-      items.push({
-        duct_no: tag.tag,
-        duct_type: 'Straight Duct',
-        gauge: gauge, connector: 'TDF',
-        A:A, B:B, C:A, D:B, E:0, ext1:0, ext2:0,
-        final_length: gauge===18?1124:1154,
-        qty: 1, dl_no: 1
-      });
-    });
-  }
-
-  // ── STEP 3b: Fallback — group unique sizes, qty = count of labels ─────────
-  if (items.length === 0) {
+  if (Object.keys(tagFirst).length === 0 || mceEnts.length === 0) {
+    // Fallback: just group unique sizes
     var bySize = {};
-    sizeEnts.forEach(function(s) {
-      var k = s.A+'x'+s.B;
-      if (!bySize[k]) bySize[k]={A:s.A,B:s.B,count:0};
+    mceEnts.forEach(function(s) {
+      var k=s.A+'x'+s.B;
+      if(!bySize[k]) bySize[k]={A:s.A,B:s.B,count:0};
       bySize[k].count++;
     });
-    var dn = 1;
+    var dn=1, items=[];
     Object.keys(bySize).sort(function(a,b){
       return (bySize[b].A+bySize[b].B)*2-(bySize[a].A+bySize[a].B)*2;
     }).forEach(function(k){
-      var s=bySize[k];
-      var perim=(s.A+s.B)*2;
-      var gauge=perim>7000?18:perim>=2500?22:24;
-      items.push({
-        duct_no:String(dn++), duct_type:'Straight Duct',
-        gauge:gauge, connector:'TDF',
-        A:s.A,B:s.B,C:s.A,D:s.B,E:0,ext1:0,ext2:0,
-        final_length:1154, qty:s.count, dl_no:1
-      });
+      var s=bySize[k]; var p=(s.A+s.B)*2;
+      var g=p>7000?18:p>=2500?22:24;
+      items.push({duct_no:String(dn++),duct_type:'Straight Duct',gauge:g,
+        connector:'TDF',A:s.A,B:s.B,C:s.A,D:s.B,E:0,ext1:0,ext2:0,
+        final_length:1154,qty:s.count,dl_no:1});
     });
+    return {items:items,tagCount:0,sizeCount:mceEnts.length,bestLayer:sizeLayer||mainLayer};
   }
+
+  // ── For each tag: find nearest size + nearest known length ───────────────
+  var items = [];
+  Object.keys(tagFirst).sort(function(a,b){
+    var na=parseInt(a.replace(/[A-Za-z]/g,'')), nb=parseInt(b.replace(/[A-Za-z]/g,''));
+    return na-nb;
+  }).forEach(function(tag) {
+    var e = tagFirst[tag];
+    var tx=e.x, ty=e.y;
+    var qty = tagCounts[tag];
+
+    // Nearest size label
+    var nearMce = mceEnts.slice().sort(function(a,b){
+      return ((a.x-tx)*(a.x-tx)+(a.y-ty)*(a.y-ty)) -
+             ((b.x-tx)*(b.x-tx)+(b.y-ty)*(b.y-ty));
+    })[0];
+    var A=nearMce?nearMce.A:0, B=nearMce?nearMce.B:0;
+
+    // Nearest known length on main layer (not equal to A or B)
+    var nearLens = [];
+    mainEnts.forEach(function(me) {
+      if (!numRe.test(me.text)) return;
+      var n = parseInt(me.text);
+      if (!KNOWN_LENGTHS.has(n) || n===A || n===B) return;
+      var d = Math.sqrt((me.x-tx)*(me.x-tx)+(me.y-ty)*(me.y-ty));
+      if (d < 3000) nearLens.push({d:d,n:n});
+    });
+    nearLens.sort(function(a,b){return a.d-b.d;});
+    var L = nearLens.length > 0 ? nearLens[0].n : 1154;
+
+    // Determine duct type from length
+    var dtype, connector='TDF', E=0, ext1=0, ext2=0, C=A, D=B;
+    if (L === 9) {
+      dtype='Closing Sheet';
+    } else if (L === 150 || L === 300) {
+      // 150mm = elbow or shoe — use size to decide
+      // Shoe if it's a reducing piece (check if there's a different size nearby)
+      dtype='Elbow'; E=90; ext1=50; ext2=50; connector='TDF';
+    } else if (L === 529) {
+      dtype='Small Duct';
+    } else if (A > 0 && B > 0) {
+      // Check if it's a taper by looking for a 2nd different size nearby
+      var nearSizes = mceEnts.filter(function(s){
+        var d=Math.sqrt((s.x-tx)*(s.x-tx)+(s.y-ty)*(s.y-ty));
+        return d<5000 && (s.A!==A||s.B!==B);
+      });
+      if (nearSizes.length > 0 && L < 1000) {
+        var ns = nearSizes[0];
+        dtype='Taper (COT)'; C=ns.A; D=ns.B;
+      } else {
+        dtype='Straight Duct';
+      }
+    } else {
+      dtype='Straight Duct';
+    }
+
+    var perim=(A+B)*2;
+    var gauge=perim>7000?18:perim>=2500?22:24;
+
+    items.push({
+      duct_no:tag, duct_type:dtype, gauge:gauge, connector:connector,
+      A:A, B:B, C:C, D:D, E:E, ext1:ext1, ext2:ext2,
+      final_length:L, qty:qty, dl_no:1
+    });
+  });
 
   return {
     items: items,
-    tagCount: tagEnts.length,
-    sizeCount: sizeEnts.length,
-    bestLayer: bestLayer
+    tagCount: Object.keys(tagFirst).length,
+    sizeCount: mceEnts.length,
+    bestLayer: sizeLayer
   };
 }
 
