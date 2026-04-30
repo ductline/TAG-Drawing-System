@@ -1259,11 +1259,13 @@ function buildSample(job,floor,numDL){
 
 // ─── EXPORT ───────────────────────────────────────────────────────────────────
 function expCSV(type){
-  if(!gData)return;
+  if(!gData||!gData.items||gData.items.length===0){
+    alert('No data to export — please generate first');return;
+  }
   const items=gData.items;
-  let csv='',fn=`Ductline_${type}_${gData.job||'PROJECT'}_${Date.now()}.csv`;
+  let csv='',fn='Ductline_'+type+'_'+(gData.job||'PROJECT')+'_'+Date.now()+'.csv';
 
-  if(type==='part1'){
+  if(type==='part1'||type==='part1-full'){
     csv='Duct No,Duct Type,Ext1,Ext2,Gauge,Connector Type,A,B,C,D,E,Final Length,Qty,Area (Sq.Ft),DL No,0-750,751-1500,1501-2100,1501+,Perimeter,Sq.Ft,Bend Length,Taper Sq.Ft,Dead End Main,Dead End Small,Rev Flange Sq.Ft,TDF Side A,TDF Side B,TDF Total mm,TDF Count,Corners,Clips Total,Gasket Mtr,Gasket Mtr2,Corner A,Clip A,Corner B,Clip B\n';
     items.forEach(r=>{
       csv+=`${r.duct_no},"${r.duct_type}",${r.ext1},${r.ext2},${r.gauge},${r.connector},${r.A},${r.B},${r.C},${r.D},${r.E},${r.final_length},${r.qty},${f6(r.area_sqft)},${r.dl_no},${f6(r.bucket_0_750)},${f6(r.bucket_751_1500)},${f6(r.bucket_1501_2100)},${f6(r.bucket_all||0)},${r.perimeter},${f6(r.sqft)},${r.bend_length||0},${f6(r.taper_sqft)},${f6(r.dead_end_main)},${f6(r.dead_end_small)},${f6(r.rev_flange_sqft)},${r.tdf_side_a},${r.tdf_side_b},${r.tdf_total_mm},${f2(r.tdf_count)},${r.corners},${r.clips_total},${f2(r.gasket_mtr)},${f6(r.gasket_mtr2)},${r.corner_a},${r.clip_a},${r.corner_b},${r.clip_b}\n`;
